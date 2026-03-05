@@ -43,6 +43,8 @@ next-env.d.ts
 /generated/prisma
 
 .vercel
+.agent/
+.openspec/
 
 # serwist PWA
 public/sw.js
