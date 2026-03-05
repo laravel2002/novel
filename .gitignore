@@ -42,7 +42,6 @@ next-env.d.ts
 
 /generated/prisma
 
-.vercel
 .agent
 .openspec
 
