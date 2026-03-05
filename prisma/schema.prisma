@@ -1,0 +1,247 @@
+generator client {
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["fullTextSearchPostgres"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Category {
+  id            Int             @id @default(autoincrement())
+  name          String          @unique
+  slug          String          @unique
+  description   String?
+  StoryCategory StoryCategory[]
+}
+
+model Chapter {
+  id             Int              @id @default(autoincrement())
+  storyId        Int
+  chapterNum     Float
+  title          String?
+  content        String
+  views          Int              @default(0)
+  createdAt      DateTime         @default(now())
+  Story          Story            @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  ReadingHistory ReadingHistory[]
+  Comment        Comment[]
+
+  @@unique([storyId, chapterNum])
+  @@index([storyId, chapterNum])
+}
+
+model Comment {
+  id          Int      @id @default(autoincrement())
+  userId      String
+  storyId     Int
+  chapterId   Int?
+  paragraphId Int? // Vị trí đoạn văn (index)
+  content     String
+  isSpoiler   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  Story       Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  Chapter     Chapter? @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  User        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chapterId, paragraphId])
+}
+
+model ReadingHistory {
+  id               Int      @id @default(autoincrement())
+  userId           String
+  storyId          Int
+  chapterId        Int
+  scrollPercentage Float?   @default(0) // Lưu phần trăm tiến độ cuộn (0-100)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  Chapter          Chapter  @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  Story            Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  User             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+model Story {
+  id                 Int              @id @default(autoincrement())
+  sourceId           Int?             @unique // ID gốc từ website tiemtruyenchu.com
+  title              String
+  slug               String           @unique
+  author             String?
+  description        String?
+  coverUrl           String?
+  status             Status           @default(ONGOING)
+  views              Int              @default(0)
+  rating             Float            @default(0)
+  chapterCount       Int              @default(0)
+  remoteChapterCount Int              @default(0)
+  votes              Int              @default(0)
+  donations          Float            @default(0)
+  trendingScore      Float            @default(0)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  Chapter            Chapter[]
+  Comment            Comment[]
+  ReadingHistory     ReadingHistory[]
+  Bookmark           Bookmark[]
+  StoryCategory      StoryCategory[]
+  StoryStat          StoryStat[]
+  Vote               Vote[]
+  Rating             Rating[]
+  Nomination         Nomination[]
+
+  @@index([slug])
+}
+
+model StoryCategory {
+  storyId    Int
+  categoryId Int
+  Category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  Story      Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@id([storyId, categoryId])
+}
+
+model Bookmark {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  storyId   Int
+  createdAt DateTime @default(now())
+  Story     Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  User      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+}
+
+model User {
+  id             String           @id @default(cuid())
+  name           String?
+  email          String?          @unique
+  emailVerified  DateTime?
+  image          String?
+  password       String?
+  role           Role             @default(USER)
+  createdAt      DateTime         @default(now())
+  accounts       Account[]
+  sessions       Session[]
+  Comment        Comment[]
+  ReadingHistory ReadingHistory[]
+  Bookmark       Bookmark[]
+  votes          Vote[]
+  ratings        Rating[]
+  nominations    Nomination[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Status {
+  ONGOING
+  COMPLETED
+  PAUSED
+}
+
+model PasswordResetToken {
+  id      String   @id @default(cuid())
+  email   String
+  token   String   @unique
+  expires DateTime
+
+  @@unique([email, token])
+}
+
+model StoryStat {
+  id        Int      @id @default(autoincrement())
+  storyId   Int
+  date      DateTime @db.Date
+  views     Int      @default(0)
+  votes     Int      @default(0)
+  donations Float    @default(0)
+  comments  Int      @default(0)
+  bookmarks Int      @default(0)
+
+  Story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, date])
+  @@index([date])
+}
+
+model Vote {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  storyId   Int
+  createdAt DateTime @default(now())
+
+  User  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@index([storyId, createdAt])
+}
+
+model Rating {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  storyId   Int
+  score     Int // 1-5
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  User  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId])
+  @@index([storyId])
+}
+
+model Nomination {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  storyId   Int
+  date      DateTime @db.Date // Chỉ lưu ngày (UTC), dùng để giới hạn 1 lượt/user/truyện/ngày
+  createdAt DateTime @default(now())
+
+  User  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  Story Story @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, storyId, date])
+  @@index([storyId])
+}
