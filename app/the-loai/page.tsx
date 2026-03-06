@@ -15,54 +15,15 @@ export const metadata: Metadata = {
 
 // Next.js 15 yêu cầu searchParams là một Promise
 interface TheLoaiPageProps {
-  searchParams: Promise<{
-    categoryId?: string;
-    status?: string;
-    sortBy?: string;
-    chapterLength?: string;
-    page?: string;
-  }>;
+  // Loại bỏ searchParams để Next.js pre-render trang này dưới dạng SSG
 }
 
-export default async function TheLoaiPage({ searchParams }: TheLoaiPageProps) {
-  const params = await searchParams;
-
-  const categoryId = params.categoryId
-    ? parseInt(params.categoryId)
-    : undefined;
-  const status = params.status as Status | undefined;
-
-  const validSortOptions: SortByOption[] = [
-    "views",
-    "updatedAt",
-    "rating",
-    "newest",
-  ];
-  const sortBy: SortByOption = validSortOptions.includes(
-    params.sortBy as SortByOption,
-  )
-    ? (params.sortBy as SortByOption)
-    : "updatedAt";
-
-  const page =
-    params.page && !isNaN(parseInt(params.page))
-      ? Math.max(1, parseInt(params.page))
-      : 1;
-  const limit = 12;
-
-  const chapterLength = params.chapterLength as
-    | "short"
-    | "medium"
-    | "long"
-    | undefined;
-
+export default async function TheLoaiPage() {
+  // Mặc định load trang đầu tiên ở Server
   const filterParams: FilterParams = {
-    categoryId,
-    status,
-    sortBy,
-    chapterLength,
-    page,
-    limit,
+    page: 1,
+    limit: 12,
+    sortBy: "updatedAt",
   };
 
   const [categories, { stories, totalCount }] = await Promise.all([
@@ -70,6 +31,8 @@ export default async function TheLoaiPage({ searchParams }: TheLoaiPageProps) {
     getFilteredStories(filterParams),
   ]);
 
+  const limit = 12;
+  const page = 1;
   const totalPages = Math.ceil(totalCount / limit);
 
   return (
@@ -79,12 +42,7 @@ export default async function TheLoaiPage({ searchParams }: TheLoaiPageProps) {
       totalCount={totalCount}
       currentPage={page}
       totalPages={totalPages}
-      searchParamsProps={{
-        categoryId: params.categoryId,
-        status: params.status,
-        sortBy: params.sortBy,
-        chapterLength: params.chapterLength,
-      }}
+      searchParamsProps={{}} // Pass empty, we'll parse in client
     />
   );
 }

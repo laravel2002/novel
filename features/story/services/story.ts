@@ -455,7 +455,7 @@ export async function getChapter(storySlug: string, chapterNum: number) {
       data: { views: { increment: 1 } },
       select: { id: true },
     })
-    .catch(() => {});
+    .catch(() => { });
 
   prisma.story
     .update({
@@ -463,10 +463,10 @@ export async function getChapter(storySlug: string, chapterNum: number) {
       data: { views: { increment: 1 } },
       select: { id: true },
     })
-    .catch(() => {});
+    .catch(() => { });
 
   // 🔥 MỚI: Tăng Redis Score cho Bảng Xếp Hạng (Leaderboard) - Trạng thái ngầm async
-  recordStoryView(data.story.id).catch(() => {});
+  recordStoryView(data.story.id).catch(() => { });
 
   return data;
 }
@@ -617,3 +617,32 @@ export const getTrendingStories = unstable_cache(
   ["trending-stories"],
   { revalidate: 3600, tags: ["home", "story"] },
 );
+
+// Hàm lấy các chapter đầu tiên của Top truyện để pre-render SSG
+export const getTopChaptersForSSG = async (limitStories = 10, limitChaptersPerStory = 5) => {
+  const topStories = await prisma.story.findMany({
+    take: limitStories,
+    orderBy: { views: "desc" },
+    select: { id: true, slug: true }
+  });
+
+  const params: { slug: string; chapter: string }[] = [];
+
+  for (const story of topStories) {
+    const chapters = await prisma.chapter.findMany({
+      where: { storyId: story.id },
+      orderBy: { chapterNum: "asc" },
+      take: limitChaptersPerStory,
+      select: { chapterNum: true }
+    });
+
+    for (const ch of chapters) {
+      params.push({
+        slug: story.slug,
+        chapter: `chuong-${ch.chapterNum}`,
+      });
+    }
+  }
+
+  return params;
+};

@@ -14,8 +14,8 @@
     "@base-ui/react": "^1.2.0",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/adapter-neon": "^7.4.1",
-    "@prisma/adapter-pg": "^7.4.1",
-    "@prisma/client": "^7.4.1",
+    "@prisma/adapter-pg": "^7.4.2",
+    "@prisma/client": "^7.4.2",
     "@serwist/next": "^9.5.6",
     "@tabler/icons-react": "^3.37.1",
     "@upstash/redis": "^1.36.2",
@@ -33,6 +33,7 @@
     "next": "16.1.6",
     "next-auth": "^5.0.0-beta.30",
     "next-themes": "^0.4.6",
+    "pg": "^8.20.0",
     "playwright": "^1.58.2",
     "radix-ui": "^1.4.3",
     "react": "19.2.3",
@@ -51,6 +52,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^25.3.0",
+    "@types/pg": "^8.18.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/ws": "^8.18.1",
@@ -60,7 +62,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "postcss": "^8.5.6",
-    "prisma": "^7.4.1",
+    "prisma": "^7.4.2",
     "tailwindcss": "^4.2.0",
     "typescript": "^5"
   },
@@ -71,5 +73,6 @@
   "trustedDependencies": [
     "sharp",
     "unrs-resolver"
-  ]
+  ],
+  "type": "module"
 }

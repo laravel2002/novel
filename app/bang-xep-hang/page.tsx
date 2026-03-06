@@ -1,12 +1,7 @@
 import { Suspense } from "react";
-import {
-  getLeaderboard,
-  LeaderboardCategory,
-  LeaderboardTimeframe,
-} from "@/services/leaderboard";
-import { RankingUI as RankingListUI } from "@/features/ranking/components/RankingUI";
-import StoryListItemSkeleton from "@/features/story/components/shared/StoryListItemSkeleton";
+import { getLeaderboard } from "@/services/leaderboard";
 import { LeaderboardFilters } from "@/features/ranking/components/LeaderboardFilters";
+import { LeaderboardListClient } from "./LeaderboardListClient";
 import Link from "next/link";
 import { Metadata } from "next";
 
@@ -18,79 +13,14 @@ export const metadata: Metadata = {
 
 export const revalidate = 3600; // Cache for 1 hour
 
-interface PageProps {
-  searchParams: Promise<{
-    category?: string;
-    timeframe?: string;
-    page?: string;
-  }>;
-}
-
-async function LeaderboardList({
-  category,
-  timeframe,
-  page,
-}: {
-  category: LeaderboardCategory;
-  timeframe: LeaderboardTimeframe;
-  page: number;
-}) {
+export default async function LeaderboardPage() {
+  // Fetch initial data for SSG (category = 'views', timeframe = 'all-time', page = 1)
   const data = await getLeaderboard({
-    category,
-    timeframe,
+    category: "views",
+    timeframe: "all-time",
     limit: 20,
-    page,
+    page: 1,
   });
-
-  if (data.stories.length === 0) {
-    return (
-      <div className="py-20 text-center text-muted-foreground bg-secondary/10 rounded-xl border border-border/50">
-        <p className="text-lg">Chưa có dữ liệu cho tiêu chí xếp hạng này.</p>
-        <p className="text-sm mt-2 opacity-70">Hãy quay lại sau nhé!</p>
-      </div>
-    );
-  }
-
-  // Map to match StoryListItem interface
-  const mappedStories = data.stories.map((s: any) => ({
-    ...s,
-    rating: s.rating ?? 0,
-    totalChapters: s.chapterCount ?? 0,
-    categories: s.categories || [],
-    updatedAt: new Date(),
-  }));
-
-  const isFirstPage = page === 1;
-
-  return (
-    <RankingListUI
-      mappedStories={mappedStories}
-      isFirstPage={isFirstPage}
-      page={page}
-    />
-  );
-}
-
-function ListSkeleton() {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="relative">
-          <div className="absolute top-0 right-4 w-11 h-11 bg-muted rounded-full z-20 border-[3px] border-background animate-pulse transform -translate-y-1/2" />
-          <StoryListItemSkeleton />
-        </div>
-      ))}
-    </div>
-  );
-}
-
-export default async function LeaderboardPage(props: PageProps) {
-  const searchParams = await props.searchParams;
-  const currentCategory =
-    (searchParams.category as LeaderboardCategory) || "views";
-  const currentTimeframe =
-    (searchParams.timeframe as LeaderboardTimeframe) || "all-time";
-  const currentPage = Number(searchParams.page) || 1;
 
   return (
     <div className="min-h-screen bg-background">
@@ -129,12 +59,8 @@ export default async function LeaderboardPage(props: PageProps) {
         </Suspense>
 
         <div className="mt-8 md:mt-16 transition-opacity duration-500 min-h-[500px]">
-          <Suspense fallback={<ListSkeleton />}>
-            <LeaderboardList
-              category={currentCategory}
-              timeframe={currentTimeframe}
-              page={currentPage}
-            />
+          <Suspense fallback={<div className="h-96 w-full animate-pulse bg-muted rounded-xl" />}>
+            <LeaderboardListClient initialData={data} />
           </Suspense>
         </div>
       </div>
