@@ -1,9 +1,14 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Metadata } from "next";
-import { getChapter } from "@/features/story/services/story";
+import { getChapter, getTopChaptersForSSG } from "@/features/story/services/story";
 import { auth } from "@/auth";
 import { StoryDetailChapter } from "@/features/chapter/components/StoryDetailChapter";
+
+export async function generateStaticParams() {
+  const topChapters = await getTopChaptersForSSG(20, 5); // 20 truyện top, mỗi truyện 5 chương đầu
+  return topChapters;
+}
 
 interface PageProps {
   params: Promise<{

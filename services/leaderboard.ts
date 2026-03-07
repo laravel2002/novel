@@ -1,5 +1,6 @@
 import { redis } from "@/lib/redis";
 import { prisma } from "@/lib/prisma";
+import { cachePrismaQuery } from "@/lib/cache";
 
 const DAILY_KEY = () => {
   const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
@@ -116,11 +117,11 @@ export async function getLeaderboardStories(
       },
     });
 
-    return fallbackStories.map((story) => ({
+    return fallbackStories.map((story: any) => ({
       ...story,
       rankViews: story.views, // Sử dụng toàn thời gian view
       totalChapters: story._count.Chapter,
-      categories: story.StoryCategory.map((sc) => sc.Category),
+      categories: story.StoryCategory.map((sc: any) => sc.Category),
     }));
   }
 
@@ -154,11 +155,11 @@ export async function getLeaderboardStories(
 
   // Map lại để giữ đúng thứ tự từ Redis và ghép `rankViews`
   const storyMap = new Map();
-  stories.forEach((story) => {
+  stories.forEach((story: any) => {
     storyMap.set(story.id, {
       ...story,
       totalChapters: story._count.Chapter,
-      categories: story.StoryCategory.map((sc) => sc.Category),
+      categories: story.StoryCategory.map((sc: any) => sc.Category),
     });
   });
 
@@ -306,40 +307,47 @@ export async function getLeaderboard({
       orderBy = { Comment: { _count: "desc" } };
     }
 
-    [stories, total] = await Promise.all([
-      prisma.story.findMany({
-        where: storyWhere,
-        orderBy,
-        take: limit,
-        skip,
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          coverUrl: true,
-          author: true,
-          views: true,
-          rating: true,
-          votes: true,
-          donations: true,
-          trendingScore: true,
-          chapterCount: true,
-          status: true,
-          StoryCategory: {
-            take: 3,
+    const cacheKeyAllTime = `leaderboard-all-time-${category}-${gender}-${genreSlug || "none"}-${status}-${limit}-${page}`;
+    [stories, total] = await cachePrismaQuery(
+      async () => {
+        return await Promise.all([
+          prisma.story.findMany({
+            where: storyWhere,
+            orderBy,
+            take: limit,
+            skip,
             select: {
-              Category: {
-                select: { id: true, name: true, slug: true },
+              id: true,
+              title: true,
+              slug: true,
+              coverUrl: true,
+              author: true,
+              views: true,
+              rating: true,
+              votes: true,
+              donations: true,
+              trendingScore: true,
+              chapterCount: true,
+              status: true,
+              StoryCategory: {
+                take: 3,
+                select: {
+                  Category: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
+              },
+              _count: {
+                select: { Bookmark: true, Comment: true },
               },
             },
-          },
-          _count: {
-            select: { Bookmark: true, Comment: true },
-          },
-        },
-      }),
-      prisma.story.count({ where: storyWhere }),
-    ]);
+          }),
+          prisma.story.count({ where: storyWhere }),
+        ]);
+      },
+      [cacheKeyAllTime],
+      { revalidate: 3600, tags: ["leaderboard"] }
+    );
   }
   // Lấy dữ liệu theo thời gian (từ bảng StoryStat)
   else {
@@ -365,84 +373,92 @@ export async function getLeaderboard({
         break; // Trending hiện dùng views làm fallback
     }
 
-    // Nhóm và tính tổng stat trong khoảng thời gian
-    const stats = await prisma.storyStat.groupBy({
-      by: ["storyId"],
-      where: {
-        ...dateFilter,
-        Story: storyWhere, // Apply các filter cho Story (status, genre...)
-      },
-      _sum: {
-        [statField]: true,
-      },
-      orderBy: {
-        _sum: {
-          [statField]: "desc",
-        },
-      },
-      take: limit,
-      skip,
-    });
-
-    const totalStats = await prisma.storyStat.groupBy({
-      by: ["storyId"],
-      where: {
-        ...dateFilter,
-        Story: storyWhere,
-      },
-    });
-    total = totalStats.length;
-
-    // Lấy thông tin Story chi tiết
-    const storyIds = stats.map((s) => s.storyId);
-
-    if (storyIds.length > 0) {
-      const detailedStories = await prisma.story.findMany({
-        where: { id: { in: storyIds } },
-        select: {
-          id: true,
-          title: true,
-          slug: true,
-          coverUrl: true,
-          author: true,
-          views: true,
-          rating: true,
-          votes: true,
-          donations: true,
-          trendingScore: true, // Tổng toàn thời gian
-          chapterCount: true,
-          status: true,
-          StoryCategory: {
-            take: 3,
-            select: {
-              Category: {
-                select: { id: true, name: true, slug: true },
-              },
+    const cacheKeyTimeframe = `leaderboard-timeframe-${category}-${timeframe}-${gender}-${genreSlug || "none"}-${status}-${limit}-${page}`;
+    const cachedResult = await cachePrismaQuery(
+      async () => {
+        // Nhóm và tính tổng stat trong khoảng thời gian
+        const stats = await prisma.storyStat.groupBy({
+          by: ["storyId"],
+          where: {
+            ...dateFilter,
+            Story: storyWhere, // Apply các filter cho Story (status, genre...)
+          },
+          _sum: {
+            [statField]: true,
+          },
+          orderBy: {
+            _sum: {
+              [statField]: "desc",
             },
           },
-          _count: {
-            select: { Bookmark: true, Comment: true },
+          take: limit,
+          skip,
+        });
+
+        const totalStats = await prisma.storyStat.groupBy({
+          by: ["storyId"],
+          where: {
+            ...dateFilter,
+            Story: storyWhere,
           },
-        },
-      });
+        });
+        const currentTotal = totalStats.length;
 
-      // Map lại để giữ thứ tự từ groupBy stats
-      const storyMap = new Map(detailedStories.map((s) => [s.id, s]));
+        let currentStories: any[] = [];
+        const storyIds = stats.map((s) => s.storyId);
 
-      stories = stats
-        .map((stat) => {
-          const story = storyMap.get(stat.storyId);
-          if (!story) return null;
+        if (storyIds.length > 0) {
+          const detailedStories = await prisma.story.findMany({
+            where: { id: { in: storyIds } },
+            select: {
+              id: true,
+              title: true,
+              slug: true,
+              coverUrl: true,
+              author: true,
+              views: true,
+              rating: true,
+              votes: true,
+              donations: true,
+              trendingScore: true, // Tổng toàn thời gian
+              chapterCount: true,
+              status: true,
+              StoryCategory: {
+                take: 3,
+                select: {
+                  Category: {
+                    select: { id: true, name: true, slug: true },
+                  },
+                },
+              },
+              _count: {
+                select: { Bookmark: true, Comment: true },
+              },
+            },
+          });
 
-          // Ghi đè chỉ số chính bằng số liệu trong khoảng thời gian
-          return {
-            ...story,
-            // Tạo một properties động, tạm thời override lên các chỉ số cũ
-            _periodValue: stat._sum[statField] || 0,
-          };
-        })
-        .filter(Boolean) as any[];
-    }
+          const storyMap = new Map(detailedStories.map((s: any) => [s.id, s]));
+
+          currentStories = stats
+            .map((stat: any) => {
+              const story = storyMap.get(stat.storyId);
+              if (!story) return null;
+
+              return {
+                ...story,
+                _periodValue: stat._sum[statField as "views" | "votes" | "donations" | "comments" | "bookmarks"] || 0,
+              };
+            })
+            .filter(Boolean);
+        }
+        return { stories: currentStories, total: currentTotal };
+      },
+      [cacheKeyTimeframe],
+      { revalidate: 3600, tags: ["leaderboard"] }
+    );
+
+    stories = cachedResult.stories;
+    total = cachedResult.total;
   }
 
   // Format lại output cho đồng nhất

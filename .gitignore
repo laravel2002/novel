@@ -42,8 +42,8 @@ next-env.d.ts
 
 /generated/prisma
 
-.agent
-.openspec
+.agent*
+.openspec*
 
 # serwist PWA
 public/sw.js

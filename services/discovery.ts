@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { cachePrismaQuery } from "@/lib/cache";
 import { Status } from "@/generated/prisma/client";
 
 export interface PaginationParams {
@@ -37,35 +38,42 @@ export async function getStoriesPaginated({
     whereClause.status = status;
   }
 
-  const stories = await prisma.story.findMany({
-    take: limit + 1, // Lọc thừa 1 phần tử để xác định xem có trang tiếp theo không
-    cursor: cursor ? { id: cursor } : undefined,
-    where: whereClause,
-    orderBy: {
-      [sortBy]: "desc", // Có thể cần sort kết hợp nếu values bị trùng lặp nhiều
-    },
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      coverUrl: true,
-      author: true,
-      status: true,
-      rating: true,
-      views: true,
-      description: true,
-      updatedAt: true,
-      _count: {
-        select: { Chapter: true },
-      },
-      StoryCategory: {
-        take: 1,
-        select: {
-          Category: { select: { id: true, name: true, slug: true } },
+  const cacheKey = `stories-paginated-${limit}-${cursor || "0"}-${categoryId || "0"}-${categorySlug || "none"}-${status || "none"}-${sortBy}`;
+  const stories = await cachePrismaQuery(
+    async () => {
+      return await prisma.story.findMany({
+        take: limit + 1, // Lọc thừa 1 phần tử để xác định xem có trang tiếp theo không
+        cursor: cursor ? { id: cursor } : undefined,
+        where: whereClause,
+        orderBy: {
+          [sortBy]: "desc", // Có thể cần sort kết hợp nếu values bị trùng lặp nhiều
         },
-      },
+        select: {
+          id: true,
+          title: true,
+          slug: true,
+          coverUrl: true,
+          author: true,
+          status: true,
+          rating: true,
+          views: true,
+          description: true,
+          updatedAt: true,
+          _count: {
+            select: { Chapter: true },
+          },
+          StoryCategory: {
+            take: 1,
+            select: {
+              Category: { select: { id: true, name: true, slug: true } },
+            },
+          },
+        },
+      });
     },
-  });
+    [cacheKey],
+    { revalidate: 1800, tags: ["stories"] }
+  );
 
   let nextCursor: typeof cursor | undefined = undefined;
   if (stories.length > limit) {
@@ -73,11 +81,11 @@ export async function getStoriesPaginated({
     nextCursor = nextItem!.id;
   }
 
-  const formattedStories = stories.map((story) => ({
+  const formattedStories = stories.map((story: any) => ({
     ...story,
     rating: story.rating ?? 0,
     totalChapters: story._count.Chapter,
-    categories: story.StoryCategory.map((sc) => sc.Category).filter(Boolean),
+    categories: story.StoryCategory.map((sc: any) => sc.Category).filter(Boolean),
   }));
 
   return {
@@ -88,14 +96,26 @@ export async function getStoriesPaginated({
 
 // Lấy danh sách TẤT CẢ thể loại
 export async function getAllCategories() {
-  return await prisma.category.findMany({
-    orderBy: { name: "asc" },
-  });
+  return await cachePrismaQuery(
+    async () => {
+      return await prisma.category.findMany({
+        orderBy: { name: "asc" },
+      });
+    },
+    ["categories-all"],
+    { revalidate: 86400, tags: ["categories"] }
+  );
 }
 
 // Lấy Chi tiết một thể loại qua Slug
 export async function getCategoryBySlug(slug: string) {
-  return await prisma.category.findUnique({
-    where: { slug },
-  });
+  return await cachePrismaQuery(
+    async () => {
+      return await prisma.category.findUnique({
+        where: { slug },
+      });
+    },
+    [`category-by-slug-${slug}`],
+    { revalidate: 86400, tags: ["categories"] }
+  );
 }
