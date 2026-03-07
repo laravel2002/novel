@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { prisma } from "../lib/prisma"; // HTTP adapter — không cần transaction
+import { uploadChapterContent } from "../services/storage";
 
 // ============================================================================
 // 🔧 CẤU HÌNH & KIỂU DỮ LIỆU
@@ -7,7 +8,7 @@ import { prisma } from "../lib/prisma"; // HTTP adapter — không cần transac
 const BASE_URL = "https://www.tiemtruyenchu.com";
 const DELAY_MS = 1500; // Delay cơ bản giữa các batch (ms)
 const DELAY_JITTER = 0.5; // Jitter ±50% cho random delay
-const DEFAULT_CONCURRENCY = 5; // Số chương cào song song mặc định
+const DEFAULT_CONCURRENCY = 10; // Số chương cào song song mặc định
 
 // 🛡️ Pool User-Agent xoay vòng — giả lập nhiều trình duyệt khác nhau
 const USER_AGENTS = [
@@ -249,6 +250,103 @@ async function phase1_crawlStoryList() {
   console.log(
     `\n🎉 Phase 1 hoàn thành: ${totalStories} truyện trên ${currentPage - 1} trang.`,
   );
+}
+
+// ============================================================================
+// 📋 PHASE 1.5: CÀO TRUYỆN THEO THỂ LOẠI (AJAX API → DB)
+// ============================================================================
+async function phase1_crawlStoryListByCategory(categorySlug: string) {
+  if (categorySlug === "all") {
+    console.log("\n" + "=".repeat(60));
+    console.log(`📋 PHASE 1.5: Cào 10 truyện MỚI NHẤT cho TẤT CẢ thể loại`);
+    console.log("=".repeat(60));
+
+    // Bước 1: Fetch danh sách Thể loại trực tiếp từ DB nếu có, hoặc tạo list cứng tạm
+    // Vì trang gốc yêu cầu gọi API the-loai, ta sẽ cào danh sách thể loại từ DB
+    const categories = await prisma.category.findMany({
+      select: { slug: true, name: true },
+    });
+
+    if (categories.length === 0) {
+      console.log(
+        "⚠️ Trong DB chưa có thẻ category nào. Vui lòng chạy phase 1 trước để có danh sách thể loại.",
+      );
+      return;
+    }
+
+    console.log(
+      `📚 Đã tải ${categories.length} thể loại từ Database. Bắt đầu duyệt...`,
+    );
+
+    for (const cat of categories) {
+      console.log(`\n⏳ [${cat.name}] Đang lấy 10 truyện mới nhất...`);
+      await fetchStoryListForCategory(cat.slug, 10);
+      await randomDelay(2000); // Đợi 2s trước khi qua thể loại khác
+    }
+  } else {
+    console.log("\n" + "=".repeat(60));
+    console.log(`📋 PHASE 1.5: Cào truyện theo thể loại [${categorySlug}]`);
+    console.log("=".repeat(60));
+
+    await fetchStoryListForCategory(categorySlug, 50);
+  }
+
+  console.log(`\n🎉 Phase 1.5 hoàn thành.`);
+}
+
+async function fetchStoryListForCategory(
+  categorySlug: string,
+  targetStories: number,
+) {
+  let currentPage = 1;
+  let totalStories = 0;
+
+  while (totalStories < targetStories) {
+    try {
+      const url = new URL(`${BASE_URL}/danh-sach`);
+      url.searchParams.set("category", categorySlug);
+      url.searchParams.set("page", currentPage.toString());
+      url.searchParams.set("ajax", "1");
+      url.searchParams.set("sort", "new_update"); // Truyện mới cập nhật
+
+      const response = await fetchWithRetry(url.toString());
+      const data = await response.json();
+
+      if (data.success && data.stories && data.stories.length > 0) {
+        // Chỉ lấy đủ số lượng target
+        const needed = targetStories - totalStories;
+        const storiesToSave = data.stories.slice(0, needed);
+
+        // Lưu Database
+        await saveStoryListToDB(storiesToSave);
+
+        const addedCount = storiesToSave.length;
+        totalStories += addedCount;
+
+        console.log(
+          `  ✅ Trang ${currentPage}: ${addedCount} truyện → DB (Tổng: ${totalStories}/${targetStories})`,
+        );
+
+        if (
+          currentPage >= (data.totalPages ? parseInt(data.totalPages) : 999)
+        ) {
+          console.log(`  ⚠️ Đã hết trang của thể loại này.`);
+          break;
+        }
+      } else {
+        console.log(`  ⚠️ Không có dữ liệu ở trang ${currentPage}. Bỏ qua.`);
+        break;
+      }
+
+      if (totalStories < targetStories) {
+        currentPage++;
+        await randomDelay();
+      }
+    } catch (error) {
+      console.error(`  ❌ Lỗi ở trang ${currentPage}:`, error);
+      break;
+    }
+  }
 }
 
 // Hàm lưu danh sách truyện vào DB (findUnique + create/update)
@@ -587,12 +685,31 @@ async function phase3_crawlChapters(
       });
 
       if (!existing) {
+        // --- Upload nội dung lên Cloudflare R2 ---
+        const slugifiedTitle = createSlug(task.storyTitle);
+        const r2Key = `stories/${slugifiedTitle}/chapters/${chapterData.chapterNum}.html`;
+
+        console.log(
+          `  ☁️  [${task.storyTitle}] Uploading chương ${task.chapterNum} lên R2...`,
+        );
+        const uploadSuccess = await uploadChapterContent(
+          r2Key,
+          chapterData.content,
+        );
+
+        if (!uploadSuccess) {
+          console.warn(
+            `  ⚠️  [${task.storyTitle}] Upload R2 thất bại chương ${task.chapterNum}. Fallback lưu vào Database.`,
+          );
+        }
+
         await prisma.chapter.create({
           data: {
             storyId: task.storyId,
             chapterNum: chapterData.chapterNum,
             title: chapterData.title,
-            content: chapterData.content,
+            cloudflarer2Key: uploadSuccess ? r2Key : null,
+            content: uploadSuccess ? null : chapterData.content, // Lỗi upload thì fallback lưu DB
           },
         });
 
@@ -720,6 +837,7 @@ async function main() {
   const storyArg = args.find((a) => a.startsWith("--story="));
   const limitArg = args.find((a) => a.startsWith("--limit="));
   const concurrencyArg = args.find((a) => a.startsWith("--concurrency="));
+  const categoryArg = args.find((a) => a.startsWith("--category="));
 
   const phase = phaseArg ? parseInt(phaseArg.split("=")[1]) : 0; // 0 = all
   const storyId = storyArg ? parseInt(storyArg.split("=")[1]) : undefined;
@@ -727,15 +845,20 @@ async function main() {
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1])
     : DEFAULT_CONCURRENCY;
+  const categorySlug = categoryArg ? categoryArg.split("=")[1] : undefined;
 
   console.log("🚀 TiemTruyenChu Crawler v2.0");
   console.log(
-    `⚙️  Phase: ${phase || "ALL"} | Story: ${storyId || "ALL"} | Limit: ${maxChapters || "ALL"} | Concurrency: ${concurrency}`,
+    `⚙️  Phase: ${phase || "ALL"} | Story: ${storyId || "ALL"} | Limit: ${maxChapters || "ALL"} | Concurrency: ${concurrency} | Category: ${categorySlug || "ALL"}`,
   );
 
   try {
     if (phase === 0 || phase === 1) {
-      await phase1_crawlStoryList();
+      if (categorySlug) {
+        await phase1_crawlStoryListByCategory(categorySlug);
+      } else {
+        await phase1_crawlStoryList();
+      }
     }
 
     if (phase === 0 || phase === 2) {

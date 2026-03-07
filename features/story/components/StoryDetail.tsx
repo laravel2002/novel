@@ -17,7 +17,8 @@ export interface StoryDetailProps {
   isLoggedIn: boolean;
   topFans: any[];
   comments: any[];
-  relatedStories?: any[];
+  relatedStoriesPromise?: Promise<any[]>;
+  initialChaptersPromise?: Promise<any[]>;
 }
 
 export function StoryDetail(props: StoryDetailProps) {

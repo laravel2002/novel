@@ -17,6 +17,7 @@ import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
+import { mutate } from "swr";
 
 interface Comment {
   id: number;
@@ -110,6 +111,9 @@ export function InlineCommentDrawer({
         setComments((prev) => [...prev, newCmd]);
         setContent("");
         setIsSpoiler(false);
+
+        // Mutate SWR cache for comment counts
+        mutate(`/api/comments/chapter/${chapterId}/counts`);
       } else {
         toast.error("Không thể gửi bình luận");
       }

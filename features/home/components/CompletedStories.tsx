@@ -27,7 +27,7 @@ export function CompletedStories({ stories = [] }: { stories?: Story[] }) {
   const otherStories = stories.slice(1, 9); // Giới hạn 8 truyện cho grid 2x4
 
   return (
-    <section className="relative w-full pt-10 pb-20">
+    <section className="relative w-full pt-10">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-3">

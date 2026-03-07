@@ -17,16 +17,17 @@ model Category {
 }
 
 model Chapter {
-  id             Int              @id @default(autoincrement())
-  storyId        Int
-  chapterNum     Float
-  title          String?
-  content        String
-  views          Int              @default(0)
-  createdAt      DateTime         @default(now())
-  Story          Story            @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  ReadingHistory ReadingHistory[]
-  Comment        Comment[]
+  id              Int              @id @default(autoincrement())
+  storyId         Int
+  chapterNum      Float
+  title           String?
+  content         String?
+  cloudflarer2Key String?
+  views           Int              @default(0)
+  createdAt       DateTime         @default(now())
+  Story           Story            @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  ReadingHistory  ReadingHistory[]
+  Comment         Comment[]
 
   @@unique([storyId, chapterNum])
   @@index([storyId, chapterNum])

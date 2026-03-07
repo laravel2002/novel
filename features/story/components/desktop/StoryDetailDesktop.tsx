@@ -37,6 +37,8 @@ const NominationBox = dynamic(
   { ssr: false },
 );
 import { BackButton } from "@/components/shared/BackButton";
+import { Suspense } from "react";
+import { Await } from "@/components/shared/Await";
 
 export function StoryDetailDesktop({
   story,
@@ -50,7 +52,8 @@ export function StoryDetailDesktop({
   isLoggedIn,
   topFans,
   comments,
-  relatedStories,
+  relatedStoriesPromise,
+  initialChaptersPromise,
 }: any) {
   return (
     <div className="min-h-screen bg-background pb-10">
@@ -197,12 +200,22 @@ export function StoryDetailDesktop({
 
             <section>
               <Card className="subtle-border bg-background shadow-sm p-6">
-                <ChapterList
-                  initialChapters={story.chapters?.slice(0, 50) || []}
-                  slug={slug}
-                  totalChapters={story.totalChapters}
-                  storyId={story.id}
-                />
+                <Suspense
+                  fallback={
+                    <div className="h-64 animate-pulse bg-muted rounded-xl" />
+                  }
+                >
+                  <Await promise={initialChaptersPromise!}>
+                    {(chapters: any[]) => (
+                      <ChapterList
+                        initialChapters={chapters?.slice(0, 50) || []}
+                        slug={slug}
+                        totalChapters={story.totalChapters}
+                        storyId={story.id}
+                      />
+                    )}
+                  </Await>
+                </Suspense>
               </Card>
             </section>
 
@@ -391,37 +404,47 @@ export function StoryDetailDesktop({
                 <span className="w-2 h-6 bg-secondary rounded-full" />
                 Cùng Thể Loại
               </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
-                {relatedStories?.map((related: any) => (
-                  <Link
-                    key={related.id}
-                    href={`/truyen/${related.slug}`}
-                    className="flex gap-4 group p-2 hover:bg-muted/50 rounded-xl transition-all subtle-border bg-background shadow-xs hover:shadow-sm"
-                  >
-                    <div className="relative w-14 h-[84px] shrink-0 rounded-md overflow-hidden bg-muted border border-border/50">
-                      <Image
-                        src={getImageUrl(related.coverUrl)}
-                        alt={related.title}
-                        fill
-                        className="object-cover group-hover:scale-110 transition-transform duration-500"
-                        sizes="56px"
-                      />
+              <Suspense
+                fallback={
+                  <div className="h-48 animate-pulse bg-muted rounded-xl" />
+                }
+              >
+                <Await promise={relatedStoriesPromise!}>
+                  {(relatedStories: any[]) => (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-4">
+                      {relatedStories?.map((related: any) => (
+                        <Link
+                          key={related.id}
+                          href={`/truyen/${related.slug}`}
+                          className="flex gap-4 group p-2 hover:bg-muted/50 rounded-xl transition-all subtle-border bg-background shadow-xs hover:shadow-sm"
+                        >
+                          <div className="relative w-14 h-[84px] shrink-0 rounded-md overflow-hidden bg-muted border border-border/50">
+                            <Image
+                              src={getImageUrl(related.coverUrl)}
+                              alt={related.title}
+                              fill
+                              className="object-cover group-hover:scale-110 transition-transform duration-500"
+                              sizes="56px"
+                            />
+                          </div>
+                          <div className="flex flex-col justify-center overflow-hidden flex-1 py-1">
+                            <h4 className="font-heading font-bold text-sm line-clamp-2 group-hover:text-primary transition-colors text-foreground leading-snug">
+                              {related.title}
+                            </h4>
+                            <div className="text-xs font-medium text-muted-foreground mt-1 flex items-center gap-1.5">
+                              <IconUser className="w-3 h-3" />
+                              <span className="truncate">{related.author}</span>
+                            </div>
+                            <div className="text-[11px] font-semibold text-muted-foreground mt-1.5 bg-muted/60 w-max px-2 py-0.5 rounded-md">
+                              {related.totalChapters} chương
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
                     </div>
-                    <div className="flex flex-col justify-center overflow-hidden flex-1 py-1">
-                      <h4 className="font-heading font-bold text-sm line-clamp-2 group-hover:text-primary transition-colors text-foreground leading-snug">
-                        {related.title}
-                      </h4>
-                      <div className="text-xs font-medium text-muted-foreground mt-1 flex items-center gap-1.5">
-                        <IconUser className="w-3 h-3" />
-                        <span className="truncate">{related.author}</span>
-                      </div>
-                      <div className="text-[11px] font-semibold text-muted-foreground mt-1.5 bg-muted/60 w-max px-2 py-0.5 rounded-md">
-                        {related.totalChapters} chương
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
+                  )}
+                </Await>
+              </Suspense>
             </div>
           </div>
         </div>

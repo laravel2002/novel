@@ -1,43 +1,81 @@
+import { Suspense } from "react";
+import { Await } from "@/components/shared/Await";
 import { LatestUpdates } from "./LatestUpdates";
 import { SidebarRankings } from "./SidebarRankings";
 import { ThreeColRankings } from "./ThreeColRankings";
 import { CompletedStories } from "./CompletedStories";
 import { HeroBanner } from "./HeroBanner";
-import type { HomeViewProps } from "./HomeDesktop";
+import type { HomeViewProps } from "./Home";
+import {
+  HeroBannerSkeleton,
+  LatestUpdatesSkeleton,
+  SidebarRankingsSkeleton,
+  ThreeColRankingsSkeleton,
+  CompletedStoriesSkeleton,
+} from "./HomeSkeletons";
 
 export function HomeMobile({
-  featuredStory,
-  latestStories,
-  topViewsSidebar,
-  topRated,
-  completedStories,
+  featuredStoryPromise,
+  latestStoriesPromise,
+  topViewsSidebarPromise,
+  topRatedPromise,
+  completedStoriesPromise,
 }: HomeViewProps) {
   return (
     <div className="bg-[#030303] min-h-screen w-full relative">
-      <main className="w-full px-4 py-6 space-y-12 pb-24">
-        {/* Hero Section Tối Giản */}
+      <main className="w-full px-6 py-16 space-y-6">
         <section>
-          <HeroBanner featuredStory={featuredStory} />
+          <Suspense fallback={<HeroBannerSkeleton />}>
+            <Await promise={featuredStoryPromise}>
+              {(featuredStory) => <HeroBanner featuredStory={featuredStory} />}
+            </Await>
+          </Suspense>
         </section>
 
         <section>
-          <LatestUpdates stories={latestStories} />
+          <Suspense fallback={<LatestUpdatesSkeleton />}>
+            <Await promise={latestStoriesPromise}>
+              {(latestStories) => <LatestUpdates stories={latestStories} />}
+            </Await>
+          </Suspense>
         </section>
 
         <section>
-          <SidebarRankings topViews={topViewsSidebar} hotStories={topRated} />
+          <Suspense fallback={<SidebarRankingsSkeleton />}>
+            <Await
+              promise={Promise.all([topViewsSidebarPromise, topRatedPromise])}
+            >
+              {([topViews, topRated]) => (
+                <SidebarRankings topViews={topViews} hotStories={topRated} />
+              )}
+            </Await>
+          </Suspense>
         </section>
 
         <section>
-          <ThreeColRankings
-            nominations={topRated}
-            topViews={topViewsSidebar}
-            favorites={topRated}
-          />
+          <Suspense fallback={<ThreeColRankingsSkeleton />}>
+            <Await
+              promise={Promise.all([topRatedPromise, topViewsSidebarPromise])}
+            >
+              {([topRated, topViews]) => (
+                <ThreeColRankings
+                  nominations={topRated}
+                  topViews={topViews}
+                  favorites={topRated}
+                />
+              )}
+            </Await>
+          </Suspense>
         </section>
 
         <section>
-          <CompletedStories stories={completedStories} />
+          <Suspense fallback={<CompletedStoriesSkeleton />}>
+            <Await promise={completedStoriesPromise}>
+              {(completedStories) => (
+                <CompletedStories stories={completedStories} />
+              )}
+            </Await>
+          </Suspense>
         </section>
       </main>
     </div>

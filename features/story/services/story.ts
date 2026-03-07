@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Status } from "@/generated/prisma/client";
 import { unstable_cache } from "next/cache"; // Đảm bảo import đúng đường dẫn generated
 import { recordStoryView } from "@/services/leaderboard";
+import { getChapterContent } from "@/services/storage";
 
 // Hàm lấy danh sách truyện mới cập nhật (Latest Updates)
 // Sắp xếp theo thời gian cập nhật giảm dần (mới nhất lên đầu)
@@ -186,6 +187,7 @@ const _getStoryBySlug = async (slug: string) => {
         include: { Category: true },
       },
       Chapter: {
+        take: 1,
         orderBy: { chapterNum: "asc" },
         select: { id: true, chapterNum: true, title: true, createdAt: true },
       },
@@ -205,6 +207,15 @@ const _getStoryBySlug = async (slug: string) => {
 export const getStoryBySlug = unstable_cache(_getStoryBySlug, ["story"], {
   tags: ["story"],
 });
+
+export async function getInitialChapters(storyId: number, limit: number = 50) {
+  return await prisma.chapter.findMany({
+    where: { storyId },
+    take: limit,
+    orderBy: { chapterNum: "asc" },
+    select: { id: true, chapterNum: true, title: true, createdAt: true },
+  });
+}
 
 // Hàm tìm kiếm truyện theo tiêu đề hoặc tác giả (Full-Text Search)
 export async function searchStories(query: string, page = 1, limit = 20) {
@@ -401,6 +412,13 @@ const _getChapterData = async (storySlug: string, chapterNum: number) => {
   });
 
   if (!chapter) return null;
+
+  // Fetch nội dung từ Cloudflare R2 nếu bài viết lưu dạng file thay vì plain text trong DB
+  if (chapter.cloudflarer2Key && !chapter.content) {
+    const r2Content = await getChapterContent(chapter.cloudflarer2Key);
+    chapter.content =
+      r2Content || "Nội dung chương đang bảo trì hoặc không tồn tại trên CDN.";
+  }
 
   // Lấy chương trước và sau để điều hướng
   const [prevChapter, nextChapter] = await Promise.all([

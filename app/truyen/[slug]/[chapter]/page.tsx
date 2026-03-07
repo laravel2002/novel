@@ -72,7 +72,7 @@ export default async function ChapterPage({ params }: PageProps) {
       coverUrl={story.coverUrl}
       chapterNum={currentChapter.chapterNum}
       chapterTitle={currentChapter.title}
-      content={currentChapter.content}
+      content={currentChapter.content || ""}
       nextChapterUrl={
         nextChapter ? `/truyen/${slug}/chuong-${nextChapter}` : null
       }

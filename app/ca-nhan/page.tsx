@@ -25,9 +25,9 @@ export default async function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <div className="relative py-12 md:py-16 overflow-hidden mb-8 border-b border-primary/10 bg-[#141413]">
+      <div className="relative py-12 md:py-16 overflow-hidden mt-12 mb-8 border-b border-primary/10 bg-[#141413]">
         <div
           className="absolute inset-0 opacity-[0.15] mix-blend-overlay pointer-events-none"
           style={{

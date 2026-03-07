@@ -8,6 +8,8 @@ import { ReadNowButton } from "@/features/story/components/shared/ReadNowButton"
 import { BookmarkButton } from "@/features/story/components/shared/BookmarkButton";
 import { BackButton } from "@/components/shared/BackButton";
 import dynamic from "next/dynamic";
+import { Suspense } from "react";
+import { Await } from "@/components/shared/Await";
 
 const ChapterList = dynamic(
   () => import("@/features/chapter/components/ChapterList"),
@@ -40,6 +42,8 @@ interface StoryDetailMobileProps {
   isLoggedIn: boolean;
   topFans: any[];
   comments: any[];
+  relatedStoriesPromise?: Promise<any[]>;
+  initialChaptersPromise?: Promise<any[]>;
 }
 
 export function StoryDetailMobile({
@@ -54,6 +58,7 @@ export function StoryDetailMobile({
   isLoggedIn,
   topFans,
   comments,
+  initialChaptersPromise,
 }: StoryDetailMobileProps) {
   return (
     <div className="md:hidden flex flex-col min-h-screen bg-background pb-safe">
@@ -183,12 +188,22 @@ export function StoryDetailMobile({
             Danh Sách Chương
           </h3>
           <div className="bg-muted/30 rounded-2xl p-3 border border-border/50">
-            <ChapterList
-              initialChapters={story.chapters.slice(0, 20)}
-              slug={slug}
-              totalChapters={story.totalChapters}
-              storyId={story.id}
-            />
+            <Suspense
+              fallback={
+                <div className="h-64 animate-pulse bg-muted rounded-xl" />
+              }
+            >
+              <Await promise={initialChaptersPromise!}>
+                {(chapters: any[]) => (
+                  <ChapterList
+                    initialChapters={chapters?.slice(0, 20) || []}
+                    slug={slug}
+                    totalChapters={story.totalChapters}
+                    storyId={story.id}
+                  />
+                )}
+              </Await>
+            </Suspense>
           </div>
         </section>
 
@@ -199,7 +214,7 @@ export function StoryDetailMobile({
             Top Fans
           </h3>
           <div className="flex overflow-x-auto gap-3 pb-2 custom-scrollbar snap-x">
-            {topFans.map((fan, index) => (
+            {topFans.map((fan: any, index: number) => (
               <div
                 key={index}
                 className="flex flex-col items-center min-w-[72px] snap-center bg-muted/40 p-2 rounded-xl border border-border/50"

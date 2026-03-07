@@ -9,6 +9,7 @@ import {
   getStoryBySlug,
   getRelatedStories,
   getTopStoriesByViews,
+  getInitialChapters,
 } from "@/features/story/services/story";
 import { Metadata } from "next";
 import {
@@ -88,7 +89,8 @@ export default async function StoryDetailPage({
   }
 
   const categoryIds = story.categories.map((c) => c.id);
-  const relatedStories = await getRelatedStories(story.id, categoryIds, 6);
+  const relatedStoriesPromise = getRelatedStories(story.id, categoryIds, 6);
+  const initialChaptersPromise = getInitialChapters(story.id, 50);
   const firstChapterNum = story.chapters[0]?.chapterNum;
 
   // Kiểm tra trạng thái bookmark, rating, nomination của user
@@ -168,7 +170,8 @@ export default async function StoryDetailPage({
       isLoggedIn={!!session?.user}
       topFans={topFans}
       comments={comments}
-      relatedStories={relatedStories}
+      relatedStoriesPromise={relatedStoriesPromise}
+      initialChaptersPromise={initialChaptersPromise}
     />
   );
 }

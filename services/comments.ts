@@ -57,3 +57,28 @@ export async function getComments(chapterId: number, paragraphId?: number) {
     userImage: cmd.User?.image || null,
   }));
 }
+
+export async function getParagraphCommentCounts(chapterId: number) {
+  const counts = await prisma.comment.groupBy({
+    by: ["paragraphId"],
+    where: {
+      chapterId: chapterId,
+      paragraphId: {
+        not: null,
+      },
+    },
+    _count: {
+      id: true,
+    },
+  });
+
+  return counts.reduce(
+    (acc, curr) => {
+      if (curr.paragraphId !== null) {
+        acc[curr.paragraphId] = curr._count.id;
+      }
+      return acc;
+    },
+    {} as Record<number, number>,
+  );
+}
