@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { fetchFilteredStories } from "../../actions/fetch-stories";
+import { fetchFilteredStories } from "@/features/story/actions/fetch-stories";
 
 import { useDevice } from "@/components/providers/DeviceProvider";
 import { CategoryPageDesktop } from "./desktop/CategoryPageDesktop";
@@ -39,14 +39,18 @@ export function CategoryPageUI(props: CategoryPageUIProps) {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const categoryId = searchParams.get("categoryId") ? parseInt(searchParams.get("categoryId")!) : undefined;
+        const categoryId = searchParams.get("categoryId")
+          ? parseInt(searchParams.get("categoryId")!)
+          : undefined;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const status = searchParams.get("status") as any;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const sortBy = (searchParams.get("sortBy") || "updatedAt") as any;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const chapterLength = searchParams.get("chapterLength") as any;
-        const page = searchParams.get("page") ? parseInt(searchParams.get("page")!) : 1;
+        const page = searchParams.get("page")
+          ? parseInt(searchParams.get("page")!)
+          : 1;
 
         const result = await fetchFilteredStories({
           categoryId,

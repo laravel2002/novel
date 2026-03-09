@@ -44,8 +44,3 @@ next-env.d.ts
 
 .agent*
 .openspec*
-
-# serwist PWA
-public/sw.js
-public/sw.js.map
-.serwist/
