@@ -10,6 +10,7 @@ import { useReadingHistory } from "@/features/history/hooks/useReadingHistory";
 import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { CommentSection } from "@/features/comment/components/CommentSection";
+import { ViewTracker } from "./ViewTracker";
 
 export function StoryDetailChapter(props: StoryDetailChapterViewProps) {
   const { isMobile } = useDevice();
@@ -54,6 +55,7 @@ export function StoryDetailChapter(props: StoryDetailChapterViewProps) {
             isLoggedIn={!!session?.user}
           />
         </div>
+        <ViewTracker storyId={props.storyId} chapterId={props.chapterId} />
       </div>
     );
   }
@@ -69,6 +71,7 @@ export function StoryDetailChapter(props: StoryDetailChapterViewProps) {
           isLoggedIn={!!session?.user}
         />
       </div>
+      <ViewTracker storyId={props.storyId} chapterId={props.chapterId} />
     </>
   );
 }

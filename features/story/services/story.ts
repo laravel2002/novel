@@ -1,7 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { Status } from "@/generated/prisma/client";
 import { unstable_cache } from "next/cache"; // Đảm bảo import đúng đường dẫn generated
-import { recordStoryView } from "@/services/leaderboard";
 import { getChapterContent } from "@/services/storage";
 
 // Hàm lấy danh sách truyện mới cập nhật (Latest Updates)
@@ -466,26 +465,6 @@ export async function getChapter(storySlug: string, chapterNum: number) {
   const data = await getChapterDataCached(storySlug, chapterNum);
   if (!data) return null;
 
-  // Tăng lượt xem (không await để tiến trình trả về data cho user trước - Optimistic response)
-  prisma.chapter
-    .update({
-      where: { id: data.chapter.id },
-      data: { views: { increment: 1 } },
-      select: { id: true },
-    })
-    .catch(() => { });
-
-  prisma.story
-    .update({
-      where: { id: data.story.id },
-      data: { views: { increment: 1 } },
-      select: { id: true },
-    })
-    .catch(() => { });
-
-  // 🔥 MỚI: Tăng Redis Score cho Bảng Xếp Hạng (Leaderboard) - Trạng thái ngầm async
-  recordStoryView(data.story.id).catch(() => { });
-
   return data;
 }
 
@@ -637,11 +616,14 @@ export const getTrendingStories = unstable_cache(
 );
 
 // Hàm lấy các chapter đầu tiên của Top truyện để pre-render SSG
-export const getTopChaptersForSSG = async (limitStories = 10, limitChaptersPerStory = 5) => {
+export const getTopChaptersForSSG = async (
+  limitStories = 10,
+  limitChaptersPerStory = 5,
+) => {
   const topStories = await prisma.story.findMany({
     take: limitStories,
     orderBy: { views: "desc" },
-    select: { id: true, slug: true }
+    select: { id: true, slug: true },
   });
 
   const params: { slug: string; chapter: string }[] = [];
@@ -651,7 +633,7 @@ export const getTopChaptersForSSG = async (limitStories = 10, limitChaptersPerSt
       where: { storyId: story.id },
       orderBy: { chapterNum: "asc" },
       take: limitChaptersPerStory,
-      select: { chapterNum: true }
+      select: { chapterNum: true },
     });
 
     for (const ch of chapters) {
