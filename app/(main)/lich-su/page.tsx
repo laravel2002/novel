@@ -19,7 +19,7 @@ export default function HistoryPage() {
               'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")',
           }}
         />
-        <div className="container relative z-10 mx-auto px-4 max-w-7xl">
+        <div className="container relative z-10 mx-auto px-4 max-w-7xl mt-20">
           <div className="flex flex-col items-center text-center space-y-4">
             <div className="w-12 h-12 bg-primary/20 text-primary rounded-full flex items-center justify-center mb-2 ring-4 ring-primary/10">
               <Clock className="w-6 h-6" />
