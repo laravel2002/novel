@@ -53,7 +53,22 @@ export function ReadNowButton({
     );
   }
 
-  // On server, or before hydration, show the default button to avoid layout shift and hydration errors.
+  // On client, determine the correct chapter and text
+  const progress = getProgress(storySlug) as
+    | { chapterNum?: number }
+    | number
+    | null;
+  const chapterVal =
+    typeof progress === "number" ? progress : progress?.chapterNum;
+
+  const targetChapter = chapterVal || firstChapterNum;
+  const buttonText = chapterVal
+    ? `Đọc tiếp Chương ${chapterVal}`
+    : "Đọc từ đầu";
+  const href = `/truyen/${storySlug}/chuong-${targetChapter}`;
+
+  // On server, we cannot know progress, we fallback to first chapter
+  // To avoid hydration mismatch warnings for text difference, we mount it carefully
   if (!isClient) {
     return (
       <Link
@@ -67,18 +82,6 @@ export function ReadNowButton({
       </Link>
     );
   }
-
-  // On client, determine the correct chapter and text
-  const progress = getProgress(storySlug) as
-    | { chapterNum?: number }
-    | number
-    | null;
-  const chapterVal =
-    typeof progress === "number" ? progress : progress?.chapterNum;
-
-  const targetChapter = chapterVal || firstChapterNum;
-  const buttonText = chapterVal ? `Đọc tiếp C.${chapterVal}` : "Đọc từ đầu";
-  const href = `/truyen/${storySlug}/chuong-${targetChapter}`;
 
   return (
     <Link href={href} className={cn("w-full block", className)}>
