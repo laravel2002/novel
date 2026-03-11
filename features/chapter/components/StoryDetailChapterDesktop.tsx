@@ -7,6 +7,13 @@ import { ChapterListSidebar } from "./ChapterListSidebar";
 import { ChapterReactions } from "./ChapterReactions";
 import { AudioPlayerController } from "./AudioPlayerController";
 import { ScrollToTop } from "@/components/layout/ScrollToTop";
+import dynamic from "next/dynamic";
+import { useAudioStore } from "@/lib/store/audio-store";
+
+const AudioPlayer = dynamic(
+  () => import("./AudioPlayer").then((mod) => mod.AudioPlayer),
+  { ssr: false },
+);
 
 export interface StoryDetailChapterViewProps {
   storyId: number;
@@ -43,6 +50,8 @@ export function StoryDetailChapterDesktop({
   prevChapter,
   nextChapter,
 }: StoryDetailChapterViewProps) {
+  const { isOpen: isAudioOpen, setIsOpen: setIsAudioOpen } = useAudioStore();
+
   const navigationProps = {
     slug: storySlug,
     currentChapterNum: chapterNum,
@@ -54,8 +63,11 @@ export function StoryDetailChapterDesktop({
     })),
   };
 
+  const cleanContent = content ? content.normalize("NFC") : "";
+  const paragraphs = cleanContent.split(/\r?\n/).filter((p: string) => p.trim() !== "");
+
   return (
-    <div className="flex min-h-screen bg-muted/20 flex-col overflow-x-hidden w-full">
+    <div className="flex min-h-screen bg-muted/20 flex-col overflow-x-hidden w-full relative">
       <TrackReadingProgress
         storySlug={storySlug}
         chapterNum={chapterNum}
@@ -119,6 +131,21 @@ export function StoryDetailChapterDesktop({
           <ScrollToTop />
         </div>
       </div>
+
+      {/* Audio Player Component for Desktop */}
+      {isAudioOpen && (
+        <AudioPlayer
+          paragraphs={paragraphs}
+          nextChapterUrl={nextChapterUrl}
+          prevChapterUrl={prevChapterUrl}
+          chapterTitle={chapterTitle ? chapterTitle.normalize("NFC") : `Chương ${chapterNum}`}
+          storyTitle={storyTitle ? storyTitle.normalize("NFC") : "Truyện"}
+          coverUrl={coverUrl}
+          isOpen={isAudioOpen}
+          onClose={() => setIsAudioOpen(false)}
+          onParagraphChange={() => {}}
+        />
+      )}
     </div>
   );
 }

@@ -14,9 +14,6 @@ import { headers } from "next/headers";
 import { getDeviceTypeFromHeaders } from "@/lib/device";
 import { DeviceProvider } from "@/components/providers/DeviceProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
-import { Navbar } from "@/components/layout/Navbar";
-import { MobileNavigation } from "@/components/layout/MobileNavigation";
-import { Footer } from "@/components/layout/Footer";
 import { BookmarkProvider } from "@/lib/contexts/BookmarkContext";
 import { ReadingProgressProvider } from "@/lib/contexts/ReadingProgressContext";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -108,17 +105,9 @@ export default async function RootLayout({
               <ReadingSettingsProvider>
                 <BookmarkProvider>
                   <ReadingProgressProvider>
-                    <div className="relative flex min-h-screen w-full flex-col">
-                      <Navbar />
-                      {/* Add main root padding bottom for mobile nav bar */}
-                      <main className="flex-1 pb-16 md:pb-0">
-                        {children}
-                        <SpeedInsights />
-                        <Analytics />
-                      </main>
-                      <Footer />
-                      <MobileNavigation />
-                    </div>
+                    {children}
+                    <SpeedInsights />
+                    <Analytics />
                   </ReadingProgressProvider>
                 </BookmarkProvider>
               </ReadingSettingsProvider>

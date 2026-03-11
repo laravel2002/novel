@@ -81,7 +81,7 @@ export function ReadNowButton({
   const href = `/truyen/${storySlug}/chuong-${targetChapter}`;
 
   return (
-    <Link href={href} className="w-full block">
+    <Link href={href} className={cn("w-full block", className)}>
       <Button size="lg" className={buttonClasses}>
         {buttonText}{" "}
         <IconBook2 className="w-5 h-5 group-hover:rotate-12 transition-transform" />

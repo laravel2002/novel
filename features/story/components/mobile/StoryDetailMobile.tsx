@@ -143,6 +143,20 @@ export function StoryDetailMobile({
               </Badge>
             ))}
           </div>
+
+          {/* Mobile Action Buttons */}
+          <div className="flex gap-3 mt-4 w-full">
+            <ReadNowButton
+              storySlug={slug}
+              firstChapterNum={firstChapterNum}
+              className="flex-1"
+            />
+            <BookmarkButton
+              storyId={story.id}
+              initialBookmarked={initialBookmarked}
+              hideText
+            />
+          </div>
         </div>
       </div>
 
@@ -255,11 +269,7 @@ export function StoryDetailMobile({
       {/* Sticky Bottom Actions Bar */}
       <div className="fixed bottom-0 left-0 right-0 p-3 bg-background/90 backdrop-blur-xl border-t border-border/50 flex gap-3 z-40 pb-safe shadow-[0_-10px_20px_rgba(0,0,0,0.05)]">
         <div className="flex-1">
-          <ReadNowButton
-            storySlug={slug}
-            firstChapterNum={firstChapterNum}
-            className="w-full h-12 text-[15px] rounded-xl shadow-lg shadow-primary/20"
-          />
+          <ReadNowButton storySlug={slug} firstChapterNum={firstChapterNum} />
         </div>
         <div className="w-14">
           <BookmarkButton

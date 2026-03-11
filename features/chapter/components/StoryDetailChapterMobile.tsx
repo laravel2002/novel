@@ -30,6 +30,7 @@ const InlineCommentDrawer = dynamic(
 
 import { ChapterSettings } from "./ChapterSettings";
 import { ChapterListSidebar } from "./ChapterListSidebar";
+import { AudioPlayerController } from "./AudioPlayerController";
 
 interface StoryDetailChapterMobileProps {
   storyId: number;
@@ -122,14 +123,13 @@ export function StoryDetailChapterMobile({
       {/* Top App Bar - Disappears on scroll down */}
       <div
         className={cn(
-          "fixed top-0 inset-x-0 z-[60] h-14 bg-background/95 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-2 transition-transform duration-300 ease-in-out shadow-sm",
-          showBars ? "translate-y-0" : "-translate-y-full",
+          "fixed top-0 inset-x-0 z-[60] h-14 bg-background/95 backdrop-blur-md border-b border-border/50 flex items-center justify-between px-2 shadow-sm translate-y-0",
         )}
       >
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => router.back()}
+          onClick={() => router.push(`/truyen/${storySlug}`)}
           className="rounded-full"
         >
           <IconChevronLeft className="w-6 h-6" />
@@ -143,6 +143,7 @@ export function StoryDetailChapterMobile({
           </p>
         </div>
         <div className="flex items-center gap-1">
+          <AudioPlayerController />
           <ChapterSettings />
         </div>
       </div>
@@ -311,6 +312,7 @@ export function StoryDetailChapterMobile({
           nextChapterUrl={nextChapterUrl}
           prevChapterUrl={prevChapterUrl}
           chapterTitle={safeChapterTitle || `Chương ${chapterNum}`}
+          storyTitle={safeStoryTitle}
           isOpen={isAudioOpen}
           onClose={() => setIsAudioOpen(false)}
           onParagraphChange={() => {}}

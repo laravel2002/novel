@@ -16,6 +16,7 @@ interface BookmarkButtonProps {
   initialBookmarked: boolean;
   className?: string;
   style?: React.CSSProperties;
+  hideText?: boolean;
 }
 
 export function BookmarkButton({
@@ -23,6 +24,7 @@ export function BookmarkButton({
   initialBookmarked,
   className,
   style,
+  hideText = false,
 }: BookmarkButtonProps) {
   const { data: session } = useSession();
   const [isBookmarked, setIsBookmarked] = useState(initialBookmarked);
@@ -69,10 +71,11 @@ export function BookmarkButton({
       variant={isBookmarked ? "default" : "outline"}
       size="lg"
       className={cn(
-        "w-full h-12 rounded-xl text-base font-bold transition-all subtle-border flex items-center gap-2",
+        "w-full h-12 rounded-xl text-base font-bold transition-all subtle-border flex items-center justify-center gap-2",
         isBookmarked
           ? "bg-secondary hover:bg-secondary/90 text-secondary-foreground shadow-md"
           : "bg-background hover:bg-primary/5 hover:text-primary hover:border-primary/30",
+        hideText && "px-0 w-12",
         className,
       )}
       style={style}
@@ -84,12 +87,12 @@ export function BookmarkButton({
       ) : isBookmarked ? (
         <>
           <IconBookmarkFilled className="w-5 h-5" />
-          Đã Lưu
+          {!hideText && "Đã Lưu"}
         </>
       ) : (
         <>
           <IconBookmark className="w-5 h-5" />
-          Lưu Trữ
+          {!hideText && "Lưu Trữ"}
         </>
       )}
     </Button>

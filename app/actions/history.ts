@@ -12,6 +12,16 @@ export async function saveReadingProgress(
   if (!userId) return { success: false, message: "Guest user" };
 
   try {
+    // Kiểm tra xem User có tồn tại không để tránh lỗi Foreign Key (P2003) do Session cũ bị lệch
+    const userExists = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true }
+    });
+
+    if (!userExists) {
+      console.warn(`[History] Bỏ qua lưu lịch sử. Không tìm thấy User ID: ${userId} trong DB`);
+      return { success: false, message: "User không tồn tại trong DB (Có thể do DB bị wipe)" };
+    }
     await prisma.readingHistory.upsert({
       where: {
         // Sử dụng index @@unique([userId, storyId]) trong schema của bạn
