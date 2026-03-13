@@ -1,8 +1,11 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { Metadata } from "next";
-import { getChapter, getTopChaptersForSSG } from "@/features/story/services/story";
-import { auth } from "@/auth";
+import {
+  getChapter,
+  getTopChaptersForSSG,
+} from "@/features/story/services/story";
+import { auth } from "@/lib/auth/auth";
 import { StoryDetailChapter } from "@/features/chapter/components/StoryDetailChapter";
 
 export async function generateStaticParams() {

@@ -5,7 +5,7 @@ import {
   getWaitlist,
   getCompletedStories,
 } from "@/services/library";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 import { GuestLibrary } from "@/features/library/components/GuestLibrary";
 import { LibraryListUI } from "@/features/library/components/Library";
 

@@ -37,7 +37,7 @@ import {
   getNominationCount,
   getRemainingNominations,
 } from "@/services/interaction";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 import { BackButton } from "@/components/shared/BackButton";
 import { StoryDetail } from "@/features/story/components/StoryDetail";
 

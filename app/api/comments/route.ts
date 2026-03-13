@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createComment } from "@/services/comments";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 
 export async function POST(req: Request) {
   try {

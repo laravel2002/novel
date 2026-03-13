@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 import { toggleBookmark } from "@/services/library";
 
 export async function POST(req: Request) {

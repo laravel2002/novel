@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 import { redirect } from "next/navigation";
 import { RegisterPageUI } from "@/features/auth/components/RegisterPageUI";
 

@@ -1,6 +1,6 @@
 "use server";
 
-import { auth } from "@/auth";
+import { auth } from "@/lib/auth/auth";
 import { upsertRating, createNomination } from "@/services/interaction";
 import { revalidatePath } from "next/cache";
 
