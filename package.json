@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun --bunx next dev",
-    "build": "bun --bunx next build",
-    "start": "bun --bunx next start",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "postinstall": "prisma generate",
     "lint": "eslint .",
     "crawl": "bun run scripts/crawl.ts"
   },
