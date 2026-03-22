@@ -19,6 +19,7 @@ import { ReadingProgressProvider } from "@/lib/contexts/ReadingProgressContext";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { ReadingSettingsProvider } from "@/lib/contexts/ReadingSettingsContext";
+import { auth } from "@/lib/auth/auth";
 
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
@@ -83,6 +84,7 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const deviceType = getDeviceTypeFromHeaders(headersList);
+  const session = await auth();
 
   return (
     <html
@@ -94,7 +96,7 @@ export default async function RootLayout({
         className={`${beVietnamPro.variable} ${loraFont.variable} ${sourceSerif.variable} antialiased bg-background text-foreground tracking-tight`}
       >
         <DeviceProvider initialDevice={deviceType}>
-          <AuthProvider>
+          <AuthProvider session={session}>
             <ThemeProvider
               attribute="class"
               defaultTheme="system"

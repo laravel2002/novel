@@ -1,5 +1,5 @@
 import { Metadata } from "next";
-import { getStoriesPaginated } from "@/services/discovery";
+import { getStoriesPaginated } from "@/features/story/services/discovery";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import Image from "next/image";

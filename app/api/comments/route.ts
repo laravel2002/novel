@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createComment } from "@/services/comments";
+import { createComment } from "@/features/comment/services/comments";
 import { auth } from "@/lib/auth/auth";
 
 export async function POST(req: Request) {

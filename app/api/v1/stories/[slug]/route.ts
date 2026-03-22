@@ -1,6 +1,6 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { corsHeaders, handleOptions } from '../../cors';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { corsHeaders, handleOptions } from "../../cors";
 
 export async function OPTIONS() {
   return handleOptions();
@@ -8,10 +8,12 @@ export async function OPTIONS() {
 
 export async function GET(
   request: Request,
-  { params }: { params: { slug: string } }
+  // 1. 🚨 CẬP NHẬT: Đổi params thành kiểu Promise theo luật Next.js 15+
+  context: { params: Promise<{ slug: string }> },
 ) {
   try {
-    const { slug } = params;
+    // 2. 🚨 CẬP NHẬT: Phải dùng await để lấy dữ liệu từ params ra
+    const { slug } = await context.params;
 
     const story = await prisma.story.findUnique({
       where: { slug },
@@ -26,8 +28,8 @@ export async function GET(
 
     if (!story) {
       return NextResponse.json(
-        { success: false, error: 'Story not found' },
-        { status: 404, headers: corsHeaders() }
+        { success: false, error: "Story not found" },
+        { status: 404, headers: corsHeaders() },
       );
     }
 
@@ -54,13 +56,13 @@ export async function GET(
 
     return NextResponse.json(
       { success: true, data: formattedStory },
-      { headers: corsHeaders() }
+      { headers: corsHeaders() },
     );
   } catch (error) {
     console.error(`Error in GET /api/v1/stories/[slug]:`, error);
     return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
+      { success: false, error: "Internal Server Error" },
+      { status: 500, headers: corsHeaders() },
     );
   }
 }

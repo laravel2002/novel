@@ -1,6 +1,6 @@
 import * as cheerio from "cheerio";
-import { prisma } from "../lib/prisma"; // HTTP adapter — không cần transaction
-import { uploadChapterContent } from "../services/storage";
+import { prisma } from "../src/lib/prisma"; // HTTP adapter — không cần transaction
+import { uploadChapterContent } from "../src/features/chapter/services/storage";
 
 // ============================================================================
 // 🔧 CẤU HÌNH & KIỂU DỮ LIỆU

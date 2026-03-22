@@ -30,13 +30,13 @@ import ChapterList from "@/features/chapter/components/ChapterList";
 import { BookmarkButton } from "@/features/story/components/shared/BookmarkButton";
 import { RatingBox } from "@/features/story/components/shared/RatingBox";
 import { NominationBox } from "@/features/story/components/shared/NominationBox";
-import { checkIsBookmarked } from "@/services/library";
+import { checkIsBookmarked, getLibraryStatus } from "@/features/library/services/library";
 import {
   getUserRating,
   hasNominatedToday,
   getNominationCount,
   getRemainingNominations,
-} from "@/services/interaction";
+} from "@/features/interaction/services/interaction";
 import { auth } from "@/lib/auth/auth";
 import { BackButton } from "@/components/shared/BackButton";
 import { StoryDetail } from "@/features/story/components/StoryDetail";
@@ -94,14 +94,14 @@ export default async function StoryDetailPage({
   const firstChapterNum = story.chapters[0]?.chapterNum;
 
   // Kiểm tra trạng thái bookmark, rating, nomination của user
-  let initialBookmarked = false;
+  let initialLibraryStatus: string | null = null;
   let userRatingScore: number | null = null;
   let nominatedToday = false;
   let remainingNominations = 0;
   if (session?.user?.id) {
-    [initialBookmarked, userRatingScore, nominatedToday, remainingNominations] =
+    [initialLibraryStatus, userRatingScore, nominatedToday, remainingNominations] =
       await Promise.all([
-        checkIsBookmarked(session.user.id, story.id),
+        getLibraryStatus(session.user.id, story.id),
         getUserRating(session.user.id, story.id),
         hasNominatedToday(session.user.id, story.id),
         getRemainingNominations(session.user.id),
@@ -162,7 +162,7 @@ export default async function StoryDetailPage({
       story={story}
       slug={slug}
       firstChapterNum={firstChapterNum}
-      initialBookmarked={initialBookmarked}
+      initialLibraryStatus={initialLibraryStatus}
       userRatingScore={userRatingScore}
       nominatedToday={nominatedToday}
       remainingNominations={remainingNominations}

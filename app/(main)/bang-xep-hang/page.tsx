@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getLeaderboard } from "@/services/leaderboard";
+import { getLeaderboard } from "@/features/ranking/services/leaderboard";
 import { LeaderboardFilters } from "@/features/ranking/components/LeaderboardFilters";
 import { LeaderboardListClient } from "./LeaderboardListClient";
 import Link from "next/link";

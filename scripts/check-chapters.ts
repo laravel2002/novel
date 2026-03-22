@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../src/lib/prisma";
 
 async function checkChapterCount() {
   console.log("Checking chapterCount consistency...");

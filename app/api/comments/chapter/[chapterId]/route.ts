@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getComments } from "@/services/comments";
+import { getComments } from "@/features/comment/services/comments";
 
 export async function GET(
   req: Request,

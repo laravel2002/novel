@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { Metadata } from "next"
-import { getCategoryBySlug, getStoriesPaginated } from "@/services/discovery"
+import { getCategoryBySlug, getStoriesPaginated } from "@/features/story/services/discovery"
 import { RankingList } from "@/features/ranking/components/RankingList"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getParagraphCommentCounts } from "@/services/comments";
+import { getParagraphCommentCounts } from "@/features/comment/services/comments";
 
 export async function GET(
   req: Request,

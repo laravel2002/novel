@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../src/lib/prisma";
 
 async function initializeRemoteChapterCount() {
   console.log("🚀 Initializing remoteChapterCount...");

@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { getChapterContent } from '@/services/storage';
-import { corsHeaders, handleOptions } from '../../cors';
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { getChapterContent } from "@/features/chapter/services/storage";
+import { corsHeaders, handleOptions } from "../../cors";
 
 export async function OPTIONS() {
   return handleOptions();
@@ -9,15 +9,16 @@ export async function OPTIONS() {
 
 export async function GET(
   request: Request,
-  { params }: { params: { chapterId: string } }
+  { params }: { params: Promise<{ chapterId: string }> },
 ) {
   try {
-    const chapterId = parseInt(params.chapterId, 10);
-    
+    const { chapterId: rawChapterId } = await params;
+    const chapterId = parseInt(rawChapterId, 10);
+
     if (isNaN(chapterId)) {
       return NextResponse.json(
-        { success: false, error: 'Invalid chapter ID' },
-        { status: 400, headers: corsHeaders() }
+        { success: false, error: "Invalid chapter ID" },
+        { status: 400, headers: corsHeaders() },
       );
     }
 
@@ -32,28 +33,28 @@ export async function GET(
 
     if (!chapter) {
       return NextResponse.json(
-        { success: false, error: 'Chapter not found' },
-        { status: 404, headers: corsHeaders() }
+        { success: false, error: "Chapter not found" },
+        { status: 404, headers: corsHeaders() },
       );
     }
 
-    // Get content from Cloudflare R2 if available, otherwise from DB
-    let content = '';
+    // Lấy nội dung từ Cloudflare R2 nếu có, nếu không thì lấy dự phòng từ DB
+    let content = "";
     if (chapter.cloudflarer2Key) {
       const r2Content = await getChapterContent(chapter.cloudflarer2Key);
-      content = r2Content || '';
+      content = r2Content || "";
     } else if (chapter.content) {
       content = chapter.content;
     }
 
-    // Get prev & next chapter
+    // Lấy ID của chương trước và chương sau bằng Promise.all (Tối ưu tốc độ)
     const [prevChapter, nextChapter] = await Promise.all([
       prisma.chapter.findFirst({
         where: {
           storyId: chapter.storyId,
           chapterNum: { lt: chapter.chapterNum },
         },
-        orderBy: { chapterNum: 'desc' },
+        orderBy: { chapterNum: "desc" },
         select: { id: true },
       }),
       prisma.chapter.findFirst({
@@ -61,7 +62,7 @@ export async function GET(
           storyId: chapter.storyId,
           chapterNum: { gt: chapter.chapterNum },
         },
-        orderBy: { chapterNum: 'asc' },
+        orderBy: { chapterNum: "asc" },
         select: { id: true },
       }),
     ]);
@@ -85,13 +86,13 @@ export async function GET(
           prevChapterId: prevChapter?.id || null,
         },
       },
-      { headers: corsHeaders() }
+      { headers: corsHeaders() },
     );
   } catch (error) {
     console.error(`Error in GET /api/v1/chapters/[chapterId]:`, error);
     return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
+      { success: false, error: "Internal Server Error" },
+      { status: 500, headers: corsHeaders() },
     );
   }
 }

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun next dev",
-    "build": "bun next build",
-    "start": "bun next start",
+    "dev": "bun --bunx next dev",
+    "build": "bun --bunx next build",
+    "start": "bun --bunx next start",
     "lint": "eslint .",
     "crawl": "bun run scripts/crawl.ts"
   },

@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { Metadata } from "next";
-import { getStoriesPaginated, getAllCategories } from "@/services/discovery";
+import { getStoriesPaginated, getAllCategories } from "@/features/story/services/discovery";
 import { Status } from "@/generated/prisma/client";
 import { CompletedFilters } from "@/features/library/components/CompletedFilters";
 import { CompletedStoriesClient } from "./CompletedStoriesClient";

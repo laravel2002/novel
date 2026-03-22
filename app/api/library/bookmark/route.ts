@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
-import { toggleBookmark } from "@/services/library";
+import { toggleBookmark } from "@/features/library/services/library";
 
 export async function POST(req: Request) {
   try {
