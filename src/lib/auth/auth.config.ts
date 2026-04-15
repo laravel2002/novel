@@ -1,6 +1,7 @@
 import type { NextAuthConfig } from "next-auth";
 
 export const authConfig = {
+  secret: process.env.AUTH_SECRET,
   trustHost: true,
   providers: [], // Cấu hình providers (Google, Github, Credentials) ở file auth.ts sau để tránh lỗi Edge runtime
   pages: {
