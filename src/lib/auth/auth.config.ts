@@ -13,11 +13,12 @@ export const authConfig = {
       // if (isOnProfile) return isLoggedIn;
       return true;
     },
-    async jwt({ token, user }) {
-      // Khi user vừa đăng nhập, nạp user ID và Role vào token
+    async jwt({ token, user, trigger }) {
+      // Khi user vừa đăng nhập hoặc token được update
       if (user) {
         token.id = user.id;
-        token.role = user.role; // Prisma model support
+        // @ts-expect-error: User model in Prisma has role
+        token.role = user.role || "USER";
       }
       return token;
     },

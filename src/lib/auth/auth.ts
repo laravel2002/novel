@@ -11,10 +11,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // @ts-expect-error: NextAuth beta typings mismatch
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   adapter: PrismaAdapter(prisma) as unknown,
+  events: {
+    async linkAccount({ user }) {
+      console.log("[Auth Event] Account linked for user:", user.email);
+    },
+    async createUser({ user }) {
+      console.log("[Auth Event] New user created:", user.email);
+    },
+  },
   providers: [
     GoogleProvider({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
+      allowDangerousEmailAccountLinking: true,
     }),
     // Định nghĩa Provider Đăng nhập bằng Email / Mật khẩu
     CredentialsProvider({
