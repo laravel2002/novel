@@ -16,8 +16,7 @@ export const authConfig = {
     async jwt({ token, user, trigger }) {
       // Khi user vừa đăng nhập hoặc token được update
       if (user) {
-        token.id = user.id;
-        // @ts-expect-error: User model in Prisma has role
+        token.id = user.id as string;
         token.role = user.role || "USER";
       }
       return token;
@@ -26,7 +25,6 @@ export const authConfig = {
       // Đổ data từ JWT Token sang Session Client
       if (token && session.user) {
         session.user.id = token.id as string;
-        // @ts-expect-error: Bypass NextAuth internal Role enum mismatch
         session.user.role = token.role;
       }
       return session;
