@@ -19,7 +19,7 @@ export type CommentResult = {
 
 export async function createComment(data: {
   storyId: number;
-  chapterId: number;
+  chapterId?: number;
   content: string;
   isSpoiler: boolean;
 }) {
@@ -115,6 +115,53 @@ export async function getChapterComments(
     return {
       success: false,
       error: "Không thể lấy danh sách bình luận",
+      comments: [],
+    };
+  }
+}
+
+export async function getStoryComments(
+  storyId: number,
+  page: number = 1,
+  limit: number = 20,
+) {
+  try {
+    const skip = (page - 1) * limit;
+
+    const [comments, total] = await Promise.all([
+      prisma.comment.findMany({
+        where: { storyId, chapterId: null },
+        include: {
+          User: {
+            select: {
+              id: true,
+              name: true,
+              image: true,
+              role: true,
+            },
+          },
+        },
+        orderBy: {
+          createdAt: "desc", // Newest first
+        },
+        skip,
+        take: limit,
+      }),
+      prisma.comment.count({ where: { storyId, chapterId: null } }),
+    ]);
+
+    return {
+      success: true,
+      comments: comments as CommentResult[],
+      total,
+      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+    };
+  } catch (error) {
+    console.error("Error fetching comments:", error);
+    return {
+      success: false,
+      error: "Không thể lấy danh sách bình luận truyện",
       comments: [],
     };
   }

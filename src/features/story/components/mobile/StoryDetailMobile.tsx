@@ -10,6 +10,7 @@ import { BackButton } from "@/components/shared/BackButton";
 import dynamic from "next/dynamic";
 import { Suspense } from "react";
 import { Await } from "@/components/shared/Await";
+import { StoryCommentSection } from "@/features/comment/components/StoryCommentSection";
 
 const ChapterList = dynamic(
   () => import("@/features/chapter/components/ChapterList"),
@@ -41,7 +42,6 @@ interface StoryDetailMobileProps {
   totalNominations: number;
   isLoggedIn: boolean;
   topFans: any[];
-  comments: any[];
   relatedStoriesPromise?: Promise<any[]>;
   initialChaptersPromise?: Promise<any[]>;
 }
@@ -57,7 +57,6 @@ export function StoryDetailMobile({
   totalNominations,
   isLoggedIn,
   topFans,
-  comments,
   initialChaptersPromise,
 }: StoryDetailMobileProps) {
   return (
@@ -220,6 +219,11 @@ export function StoryDetailMobile({
               </Await>
             </Suspense>
           </div>
+        </section>
+
+        {/* Bình luận bộ truyện */}
+        <section>
+          <StoryCommentSection storyId={story.id} />
         </section>
 
         {/* Top Fans */}

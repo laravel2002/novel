@@ -18,6 +18,7 @@ import { cn, getImageUrl } from "@/lib/utils";
 import { ReadNowButton } from "@/features/story/components/shared/ReadNowButton";
 import dynamic from "next/dynamic";
 import { BookmarkButton } from "@/features/story/components/shared/BookmarkButton";
+import { StoryCommentSection } from "@/features/comment/components/StoryCommentSection";
 
 const ChapterList = dynamic(
   () => import("@/features/chapter/components/ChapterList"),
@@ -51,7 +52,6 @@ export function StoryDetailDesktop({
   totalNominations,
   isLoggedIn,
   topFans,
-  comments,
   relatedStoriesPromise,
   initialChaptersPromise,
 }: any) {
@@ -219,76 +219,8 @@ export function StoryDetailDesktop({
               </Card>
             </section>
 
-            <section className="space-y-6">
-              <div className="flex items-center justify-between border-b-2 border-border/50 pb-3">
-                <h2 className="text-2xl font-heading font-bold text-foreground flex items-center gap-2">
-                  Bình Luận{" "}
-                  <span className="text-primary text-lg">
-                    ({comments?.length || 0})
-                  </span>
-                </h2>
-              </div>
-
-              <div className="flex gap-4">
-                <Avatar className="w-10 h-10 border-2 border-background shadow-sm">
-                  <AvatarFallback className="bg-primary/20 text-primary font-bold">
-                    ?
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 space-y-3">
-                  <textarea
-                    className="w-full min-h-[100px] p-4 rounded-xl border border-input bg-muted/40 focus:bg-background focus:outline-hidden focus:ring-2 focus:ring-primary/50 resize-y text-sm transition-colors shadow-inner"
-                    placeholder="Chia sẻ cảm nghĩ của bạn về truyện..."
-                  ></textarea>
-                  <div className="flex justify-end">
-                    <Button
-                      size="sm"
-                      className="rounded-full px-6 font-semibold shadow-md inline-flex"
-                    >
-                      Gửi Bình Luận
-                    </Button>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-6 mt-8">
-                {comments?.map((comment: any) => (
-                  <div key={comment.id} className="flex gap-4 group">
-                    <Avatar className="w-10 h-10 border border-border shadow-sm">
-                      <AvatarFallback className="bg-gradient-to-br from-primary/80 to-primary text-white font-bold">
-                        {comment.user[0]}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 bg-muted/30 p-4 rounded-2xl rounded-tl-sm border border-transparent group-hover:border-border transition-colors">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="font-bold text-sm text-foreground">
-                          {comment.user}
-                        </span>
-                        <span className="w-1 h-1 rounded-full bg-border" />
-                        <span className="text-xs font-medium text-muted-foreground">
-                          {comment.time}
-                        </span>
-                      </div>
-                      <p className="text-sm text-foreground/90 leading-relaxed mb-3">
-                        {comment.content}
-                      </p>
-                      <div className="flex items-center gap-5 text-xs font-semibold text-muted-foreground">
-                        <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
-                          <IconThumbUp className="w-4 h-4" /> Thích
-                        </button>
-                        <button className="flex items-center gap-1.5 hover:text-primary transition-colors">
-                          <IconMessageCircle className="w-4 h-4" /> Phản hồi
-                        </button>
-                        {comment.replies > 0 && (
-                          <span className="text-primary hover:underline cursor-pointer flex items-center gap-1 before:content-['•'] before:text-border before:mr-2">
-                            {comment.replies} phản hồi
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <section>
+              <StoryCommentSection storyId={story.id} />
             </section>
           </div>
 

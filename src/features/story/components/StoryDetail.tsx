@@ -16,7 +16,6 @@ export interface StoryDetailProps {
   totalNominations: number;
   isLoggedIn: boolean;
   topFans: any[];
-  comments: any[];
   relatedStoriesPromise?: Promise<any[]>;
   initialChaptersPromise?: Promise<any[]>;
 }

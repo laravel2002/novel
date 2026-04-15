@@ -130,32 +130,7 @@ export default async function StoryDetailPage({
     },
   ];
 
-  // Mock data cho Bình luận
-  const comments = [
-    {
-      id: 1,
-      user: "Đức Trần",
-      content:
-        "Bạn có thể thay Anh ấy thành họ Triệu, họ Lý và tôi thành ta thì đọc nó sẽ đỡ gượng hơn với mối quan hệ của 2 nv",
-      time: "6 giờ trước",
-      replies: 1,
-    },
-    {
-      id: 2,
-      user: "Huy Tôn",
-      content:
-        "Bộ này có kinh dị không mn? E nhát mà thấy truyện hot cũng tò mò",
-      time: "11 giờ trước",
-      replies: 1,
-    },
-    {
-      id: 3,
-      user: "Trọng Phan",
-      content: "ai có link discord k mình xin vs",
-      time: "11 giờ trước",
-      replies: 0,
-    },
-  ];
+
 
   return (
     <StoryDetail
@@ -169,7 +144,6 @@ export default async function StoryDetailPage({
       totalNominations={totalNominations}
       isLoggedIn={!!session?.user}
       topFans={topFans}
-      comments={comments}
       relatedStoriesPromise={relatedStoriesPromise}
       initialChaptersPromise={initialChaptersPromise}
     />

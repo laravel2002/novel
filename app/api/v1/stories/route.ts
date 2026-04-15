@@ -1,58 +1,66 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { corsHeaders, handleOptions } from '../cors';
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { StoryService } from "@/features/story/services/story.service";
+import { getApiAuthUser } from "@/lib/api-auth";
+import { corsHeaders, handleOptions } from "../cors";
 
 export async function OPTIONS() {
   return handleOptions();
 }
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10);
+    const status = searchParams.get("status") as any;
+    const orderBy = searchParams.get("orderBy") as any;
+    const categoryIdParam = searchParams.get("categoryId");
+    const categoryId = categoryIdParam ? parseInt(categoryIdParam, 10) : undefined;
+
+    // Gọi helper Auth đa nền tảng (Step 4)
+    const user = await getApiAuthUser(req);
+    if (user) {
+      console.log(`[API v1/stories] User authenticated: ${user.email} (Role: ${user.role})`);
+    }
+
+    // Tương tác với DB qua Service Layer (Step 2)
+    const result = await StoryService.getStories({
+      page,
+      limit,
+      status: ["ONGOING", "COMPLETED", "PAUSED"].includes(status) ? status : undefined,
+      orderBy: ["views", "createdAt", "votes"].includes(orderBy) ? orderBy : undefined,
+      categoryId: !isNaN(categoryId as number) ? categoryId : undefined,
+    });
+
+    const totalPages = Math.ceil(result.total / limit);
+
+    // Trả kết quả chuẩn hóa API Response Formatter (Step 1)
+    const response = sendSuccess(
+      result.stories,
+      "Thành công",
+      200,
+      {
+        page,
+        limit,
+        total: result.total,
+        totalPages,
+        hasMore: page < totalPages,
+      }
+    );
+
+    // Map Headers thủ công
+    for (const [key, value] of Object.entries(corsHeaders())) {
+      response.headers.set(key, String(value));
+    }
     
-    const skip = (page - 1) * limit;
-
-    const [stories, totalItems] = await Promise.all([
-      prisma.story.findMany({
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          coverUrl: true,
-          author: true,
-          status: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.story.count(),
-    ]);
-
-    const formattedStories = stories.map((story) => ({
-      id: story.id,
-      slug: story.slug,
-      title: story.title,
-      coverImage: story.coverUrl,
-      author: story.author,
-      status: story.status,
-      updatedAt: story.updatedAt,
-    }));
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return NextResponse.json(
-      { success: true, data: formattedStories, pagination: { page, limit, totalItems, totalPages } },
-      { headers: corsHeaders() }
-    );
+    return response;
   } catch (error) {
-    console.error('Error in GET /api/v1/stories:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
-    );
+    console.error("[API v1/stories] Error:", error);
+    const errResponse = sendError(error, "Lấy danh sách truyện thất bại");
+    for (const [key, value] of Object.entries(corsHeaders())) {
+      errResponse.headers.set(key, String(value));
+    }
+    return errResponse;
   }
 }
