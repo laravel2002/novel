@@ -1,63 +1,49 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma"; // Đảm bảo đường dẫn này trỏ đúng file prisma của bạn
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { ChapterService } from "@/features/chapter/services/chapter.service";
+import { corsHeaders, handleOptions } from "@/lib/cors";
 
-export async function GET(request: Request) {
-  // 1. Lấy các tham số từ URL (ví dụ: /api/chapters?storyId=1&page=2&limit=50)
-  const { searchParams } = new URL(request.url);
-  const storyId = Number(searchParams.get("storyId"));
-  // Sử dụng page (mặc định là 1) và limit (mặc định là 50)
-  const page = Number(searchParams.get("page")) || 1;
-  const limit = Number(searchParams.get("limit")) || 50;
+export async function OPTIONS() {
+  return handleOptions();
+}
 
-  // Kiểm tra xem có ID truyện chưa
-  if (!storyId) {
-    return NextResponse.json(
-      { error: "Vui lòng cung cấp storyId" },
-      { status: 400 },
-    );
-  }
-
+export async function GET(req: NextRequest) {
   try {
-    // 2. Viết truy vấn Offset-based bằng Prisma
-    const skip = (page - 1) * limit;
+    const { searchParams } = new URL(req.url);
+    const storyId = searchParams.get("storyId");
+    const storySlug = searchParams.get("storySlug");
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "50", 10);
 
-    const chapters = await prisma.chapter.findMany({
-      where: {
-        storyId: storyId,
-      },
-      take: limit, // Lấy `limit` số lượng chương
-      skip: skip, // Bỏ qua `skip` số lượng chương
-      orderBy: {
-        chapterNum: "asc", // Sắp xếp từ chương nhỏ đến lớn
-      },
-      // Chỉ lấy đúng những cột cần hiển thị để tối ưu
-      select: {
-        id: true,
-        chapterNum: true,
-        title: true,
-      },
+    if (!storyId && !storySlug) {
+      return sendError("Missing storyId or storySlug", "Vui lòng cung cấp storyId hoặc storySlug", 400);
+    }
+
+    const result = await ChapterService.getChapters({
+      storyId: storyId ? parseInt(storyId, 10) : undefined,
+      storySlug: storySlug || undefined,
+      page,
+      limit
     });
 
-    // Option: Có thể đến tổng số chương của story để báo cho frontend biết max page
-    // (Tuy front-end đã có totalChapters nhưng truyền ra từ đây sẽ chắc chắn hơn)
-    const totalChaptersCount = await prisma.chapter.count({
-      where: { storyId: storyId },
+    const response = sendSuccess(
+      result.chapters, 
+      "Thành công", 
+      200, 
+      { 
+        page, 
+        limit, 
+        total: result.total,
+        totalPages: Math.ceil(result.total / limit)
+      }
+    );
+    
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
     });
 
-    const totalPages = Math.ceil(totalChaptersCount / limit);
-
-    // Trả dữ liệu về cho Frontend
-    return NextResponse.json({
-      data: chapters,
-      meta: {
-        currentPage: page,
-        limit: limit,
-        totalPages: totalPages,
-        totalItems: totalChaptersCount,
-      },
-    });
+    return response;
   } catch (error) {
-    console.error("Lỗi lấy danh sách chương:", error);
-    return NextResponse.json({ error: "Lỗi server cục bộ" }, { status: 500 });
+    return sendError(error, "Lỗi khi lấy danh sách chương");
   }
 }

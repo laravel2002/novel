@@ -53,6 +53,9 @@ d:\novel
         ├── prisma.ts       # Singleton kế nối Database Prisma
         ├── redis.ts        # Singleton kết nối Redis
         ├── cloudflare-r2.ts# Cấu hình lưu trữ R2
+        ├── api-response.ts # Formatter chuẩn hóa HTTP Response (Web + Mobile)
+        ├── api-auth.ts     # Helper logic xác thực đa nền tảng
+        ├── cors.ts         # Cấu hình CORS chung cho API
         └── ...
 ```
 

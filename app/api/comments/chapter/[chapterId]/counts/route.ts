@@ -1,21 +1,33 @@
-import { NextResponse } from "next/server";
-import { getParagraphCommentCounts } from "@/features/comment/services/comments";
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { CommentService } from "@/features/comment/services/comment.service";
+import { corsHeaders, handleOptions } from "@/lib/cors";
+
+export async function OPTIONS() {
+  return handleOptions();
+}
 
 export async function GET(
-  req: Request,
+  req: NextRequest,
   { params }: { params: Promise<{ chapterId: string }> },
 ) {
   try {
     const { chapterId } = await params;
+    
+    if (!chapterId) {
+      return sendError("Missing chapterId", "Thiếu chapterId", 400);
+    }
 
-    const counts = await getParagraphCommentCounts(parseInt(chapterId, 10));
+    const counts = await CommentService.getParagraphCommentCounts(parseInt(chapterId, 10));
 
-    return NextResponse.json(counts);
+    const response = sendSuccess(counts, "Thành công");
+    
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
   } catch (error) {
-    console.error("Lỗi lấy số lượng bình luận theo đoạn:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+    return sendError(error, "Lỗi khi lấy số lượng bình luận theo đoạn");
   }
 }

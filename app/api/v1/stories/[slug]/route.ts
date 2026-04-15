@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { StoryService } from "@/features/story/services/story.service";
 import { corsHeaders, handleOptions } from "../../cors";
 
 export async function OPTIONS() {
@@ -7,62 +8,26 @@ export async function OPTIONS() {
 }
 
 export async function GET(
-  request: Request,
-  // 1. 🚨 CẬP NHẬT: Đổi params thành kiểu Promise theo luật Next.js 15+
-  context: { params: Promise<{ slug: string }> },
+  req: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
-    // 2. 🚨 CẬP NHẬT: Phải dùng await để lấy dữ liệu từ params ra
-    const { slug } = await context.params;
-
-    const story = await prisma.story.findUnique({
-      where: { slug },
-      include: {
-        StoryCategory: {
-          include: {
-            Category: true,
-          },
-        },
-      },
-    });
+    const { slug } = await params;
+    
+    const story = await StoryService.getStoryDetail(slug);
 
     if (!story) {
-      return NextResponse.json(
-        { success: false, error: "Story not found" },
-        { status: 404, headers: corsHeaders() },
-      );
+      return sendError("Not Found", "Không tìm thấy truyện", 404);
     }
 
-    const categories = story.StoryCategory.map((sc) => ({
-      slug: sc.Category.slug,
-      name: sc.Category.name,
-    }));
+    const response = sendSuccess(story, "Thành công");
 
-    const formattedStory = {
-      id: story.id,
-      slug: story.slug,
-      title: story.title,
-      coverImage: story.coverUrl,
-      author: story.author,
-      description: story.description,
-      status: story.status,
-      views: story.views,
-      chapterCount: story.chapterCount,
-      rating: story.rating,
-      votes: story.votes,
-      updatedAt: story.updatedAt,
-      categories,
-    };
+    for (const [key, value] of Object.entries(corsHeaders())) {
+      response.headers.set(key, String(value));
+    }
 
-    return NextResponse.json(
-      { success: true, data: formattedStory },
-      { headers: corsHeaders() },
-    );
+    return response;
   } catch (error) {
-    console.error(`Error in GET /api/v1/stories/[slug]:`, error);
-    return NextResponse.json(
-      { success: false, error: "Internal Server Error" },
-      { status: 500, headers: corsHeaders() },
-    );
+    return sendError(error, "Lỗi khi lấy chi tiết truyện (v1)");
   }
 }

@@ -85,10 +85,8 @@ export const StoryService = {
   /**
    * Lấy chi tiết một truyện dựa trên slug
    */
-  async getStoryBySlug(slug: string) {
-    if (!slug) {
-      throw new Error("Slug is required");
-    }
+  async getStoryDetail(slug: string) {
+    if (!slug) return null;
 
     const story = await prisma.story.findUnique({
       where: { slug },
@@ -97,10 +95,35 @@ export const StoryService = {
           include: {
             Category: true
           }
+        },
+        _count: {
+          select: { Chapter: true }
         }
       }
     });
 
-    return story;
+    if (!story) return null;
+
+    return {
+      ...story,
+      categories: story.StoryCategory.map(sc => sc.Category),
+      totalChapters: story._count.Chapter
+    };
+  }
+};
+
+export const CategoryService = {
+  /**
+   * Lấy danh sách tất cả thể loại
+   */
+  async getAllCategories() {
+    return await prisma.category.findMany({
+      orderBy: { name: 'asc' },
+      select: {
+        id: true,
+        name: true,
+        slug: true
+      }
+    });
   }
 };

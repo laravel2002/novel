@@ -1,27 +1,47 @@
-import { NextRequest, NextResponse } from "next/server";
-import { searchStories } from "@/features/story/services/story";
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { SearchService } from "@/features/search/services/search.service";
+import { corsHeaders, handleOptions } from "@/lib/cors";
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get("q");
+export async function OPTIONS() {
+  return handleOptions();
+}
 
-  if (!query) {
-    return NextResponse.json(
-      { error: "Query parameter is required" },
-      { status: 400 },
-    );
-  }
-
+export async function GET(req: NextRequest) {
   try {
-    const page = Number(searchParams.get("page")) || 1;
-    const limit = Number(searchParams.get("limit")) || 20;
-    const result = await searchStories(query, page, limit);
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error("Search API error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get("q") || "";
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10);
+
+    if (!query.trim()) {
+      return sendSuccess([], "Nhập từ khóa tìm kiếm", 200, { page, limit, total: 0, totalPages: 0 });
+    }
+
+    const result = await SearchService.search({
+      query,
+      page,
+      limit
+    });
+
+    const response = sendSuccess(
+      result.stories,
+      "Thành công",
+      200,
+      {
+        page,
+        limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / limit)
+      }
     );
+
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
+  } catch (error) {
+    return sendError(error, "Lỗi khi tìm kiếm truyện");
   }
 }

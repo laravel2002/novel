@@ -1,69 +1,46 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { corsHeaders, handleOptions } from '../../../cors';
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { ChapterService } from "@/features/chapter/services/chapter.service";
+import { corsHeaders, handleOptions } from "../../cors";
 
 export async function OPTIONS() {
   return handleOptions();
 }
 
 export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ slug: string }> }
+  req: NextRequest,
+  { params }: { params: Promise<{ slug: string }> },
 ) {
   try {
     const { slug } = await params;
-    const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '100', 10);
-    
-    const skip = (page - 1) * limit;
+    const { searchParams } = new URL(req.url);
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "100", 10);
 
-    const story = await prisma.story.findUnique({
-      where: { slug },
-      select: { id: true },
+    const result = await ChapterService.getChapters({
+      storySlug: slug,
+      page,
+      limit
     });
 
-    if (!story) {
-      return NextResponse.json(
-        { success: false, error: 'Story not found' },
-        { status: 404, headers: corsHeaders() }
-      );
+    const response = sendSuccess(
+      result.chapters,
+      "Thành công",
+      200,
+      {
+        page,
+        limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / limit),
+      }
+    );
+
+    for (const [key, value] of Object.entries(corsHeaders())) {
+      response.headers.set(key, String(value));
     }
 
-    const [chapters, totalItems] = await Promise.all([
-      prisma.chapter.findMany({
-        where: { storyId: story.id },
-        skip,
-        take: limit,
-        orderBy: { chapterNum: 'asc' },
-        select: {
-          id: true,
-          chapterNum: true,
-          title: true,
-          createdAt: true,
-        },
-      }),
-      prisma.chapter.count({ where: { storyId: story.id } }),
-    ]);
-
-    const formattedChapters = chapters.map((chapter) => ({
-      id: chapter.id,
-      chapterNumber: chapter.chapterNum,
-      title: chapter.title,
-      createdAt: chapter.createdAt,
-    }));
-
-    const totalPages = Math.ceil(totalItems / limit);
-
-    return NextResponse.json(
-      { success: true, data: formattedChapters, pagination: { page, limit, totalItems, totalPages } },
-      { headers: corsHeaders() }
-    );
+    return response;
   } catch (error) {
-    console.error(`Error in GET /api/v1/stories/[slug]/chapters:`, error);
-    return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
-    );
+    return sendError(error, "Lỗi khi lấy danh sách chương của truyện (v1)");
   }
 }

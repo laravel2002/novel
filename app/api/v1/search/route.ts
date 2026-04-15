@@ -1,74 +1,57 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { corsHeaders, handleOptions } from '../cors';
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { SearchService } from "@/features/search/services/search.service";
+import { corsHeaders, handleOptions } from "@/lib/cors";
 
 export async function OPTIONS() {
   return handleOptions();
 }
 
-export async function GET(request: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
-    const q = searchParams.get('q') || '';
-    const page = parseInt(searchParams.get('page') || '1', 10);
-    const limit = parseInt(searchParams.get('limit') || '20', 10);
-    
-    if (!q.trim()) {
-      return NextResponse.json(
-        { success: true, data: [], pagination: { page, limit, totalItems: 0, totalPages: 0 } },
-        { headers: corsHeaders() }
-      );
-    }
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get("q") || "";
+    const page = parseInt(searchParams.get("page") || "1", 10);
+    const limit = parseInt(searchParams.get("limit") || "20", 10);
 
-    const skip = (page - 1) * limit;
+    const result = await SearchService.search({
+      query,
+      page,
+      limit
+    });
 
-    const whereClause = {
-      OR: [
-        { title: { contains: q, mode: 'insensitive' as const } },
-        { author: { contains: q, mode: 'insensitive' as const } },
-      ]
-    };
+    const totalPages = Math.ceil(result.total / limit);
 
-    const [stories, totalItems] = await Promise.all([
-      prisma.story.findMany({
-        where: whereClause,
-        skip,
-        take: limit,
-        orderBy: { updatedAt: 'desc' },
-        select: {
-          id: true,
-          slug: true,
-          title: true,
-          coverUrl: true,
-          author: true,
-          status: true,
-          updatedAt: true,
-        },
-      }),
-      prisma.story.count({ where: whereClause }),
-    ]);
-
-    const formattedStories = stories.map((story) => ({
-      id: story.id,
-      slug: story.slug,
-      title: story.title,
-      coverImage: story.coverUrl,
-      author: story.author,
-      status: story.status,
-      updatedAt: story.updatedAt,
+    // Format lại payload cho Mobile (coverImage field)
+    const formattedStories = result.stories.map((s) => ({
+      id: s.id,
+      slug: s.slug,
+      title: s.title,
+      coverImage: s.coverUrl,
+      author: s.author,
+      status: s.status,
+      updatedAt: s.updatedAt,
     }));
 
-    const totalPages = Math.ceil(totalItems / limit);
+    const response = sendSuccess(
+      formattedStories,
+      "Thành công",
+      200,
+      {
+        page,
+        limit,
+        total: result.total,
+        totalPages,
+        hasMore: page < totalPages
+      }
+    );
 
-    return NextResponse.json(
-      { success: true, data: formattedStories, pagination: { page, limit, totalItems, totalPages } },
-      { headers: corsHeaders() }
-    );
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
+    });
+
+    return response;
   } catch (error) {
-    console.error('Error in GET /api/v1/search:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
-    );
+    return sendError(error, "Lỗi khi tìm kiếm truyện (v1)");
   }
 }

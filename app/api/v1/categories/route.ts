@@ -1,30 +1,24 @@
-import { NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
-import { corsHeaders, handleOptions } from '../cors';
+import { NextRequest } from "next/server";
+import { sendSuccess, sendError } from "@/lib/api-response";
+import { CategoryService } from "@/features/story/services/story.service";
+import { corsHeaders, handleOptions } from "@/lib/cors";
 
 export async function OPTIONS() {
   return handleOptions();
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const categories = await prisma.category.findMany({
-      select: {
-        slug: true,
-        name: true,
-      },
-      orderBy: { name: 'asc' },
+    const categories = await CategoryService.getAllCategories();
+    
+    const response = sendSuccess(categories, "Thành công");
+
+    Object.entries(corsHeaders()).forEach(([key, value]) => {
+      response.headers.set(key, value);
     });
 
-    return NextResponse.json(
-      { success: true, data: categories },
-      { headers: corsHeaders() }
-    );
+    return response;
   } catch (error) {
-    console.error('Error in GET /api/v1/categories:', error);
-    return NextResponse.json(
-      { success: false, error: 'Internal Server Error' },
-      { status: 500, headers: corsHeaders() }
-    );
+    return sendError(error, "Lỗi khi lấy danh sách thể loại");
   }
 }
