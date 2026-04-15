@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { sendSuccess, sendError } from "@/lib/api-response";
 import { StoryService } from "@/features/story/services/story.service";
-import { corsHeaders, handleOptions } from "../../cors";
+import { corsHeaders, handleOptions } from "@/lib/cors";
 
 export async function OPTIONS() {
   return handleOptions();
