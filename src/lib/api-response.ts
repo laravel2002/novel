@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// ============================================================
+// Interfaces
+// ============================================================
+
 export interface PaginationMeta {
   page?: number;
   limit?: number;
@@ -9,14 +13,41 @@ export interface PaginationMeta {
   nextCursor?: string | number | null;
 }
 
+export interface ResponseMetadata {
+  timestamp: string;
+  version: string;
+}
+
 export interface ApiResponse<T = unknown> {
   success: boolean;
   data: T | null;
   message: string;
   error: unknown | null;
+  metadata: ResponseMetadata;
   pagination?: PaginationMeta;
 }
 
+// ============================================================
+// Helper: Tạo metadata mặc định
+// ============================================================
+
+function createDefaultMetadata(version: string = "v1"): ResponseMetadata {
+  return {
+    timestamp: new Date().toISOString(),
+    version,
+  };
+}
+
+// ============================================================
+// Response Builders (Legacy - giữ cho backward compat)
+// ============================================================
+
+/**
+ * Trả về response thành công.
+ * 
+ * LƯU Ý: Đây là API cũ, giữ lại cho backward compatibility.
+ * Các route mới nên dùng `apiHandler()` từ `@/lib/api-handler.ts`.
+ */
 export function sendSuccess<T>(
   data: T,
   message: string = 'Success',
@@ -28,6 +59,7 @@ export function sendSuccess<T>(
     data,
     message,
     error: null,
+    metadata: createDefaultMetadata(),
   };
   
   if (pagination) {
@@ -37,6 +69,12 @@ export function sendSuccess<T>(
   return NextResponse.json(response, { status });
 }
 
+/**
+ * Trả về response lỗi.
+ * 
+ * LƯU Ý: Đây là API cũ, giữ lại cho backward compatibility.
+ * Các route mới nên dùng `apiHandler()` từ `@/lib/api-handler.ts`.
+ */
 export function sendError(
   error: unknown,
   message: string = 'An error occurred',
@@ -58,6 +96,7 @@ export function sendError(
     data: null,
     message,
     error: errorDetail,
+    metadata: createDefaultMetadata(),
   };
 
   return NextResponse.json(response, { status });

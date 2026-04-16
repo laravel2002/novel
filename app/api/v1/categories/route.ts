@@ -1,24 +1,9 @@
-import { NextRequest } from "next/server";
-import { sendSuccess, sendError } from "@/lib/api-response";
+import { apiHandler, createOptionsHandler } from "@/lib/api-handler";
 import { CategoryService } from "@/features/story/services/story.service";
-import { corsHeaders, handleOptions } from "@/lib/cors";
 
-export async function OPTIONS() {
-  return handleOptions();
-}
+export const OPTIONS = createOptionsHandler();
 
-export async function GET(req: NextRequest) {
-  try {
-    const categories = await CategoryService.getAllCategories();
-    
-    const response = sendSuccess(categories, "Thành công");
-
-    Object.entries(corsHeaders()).forEach(([key, value]) => {
-      response.headers.set(key, value);
-    });
-
-    return response;
-  } catch (error) {
-    return sendError(error, "Lỗi khi lấy danh sách thể loại");
-  }
-}
+export const GET = apiHandler(async (_req, ctx) => {
+  const categories = await CategoryService.getAllCategories();
+  return ctx.success(categories);
+});

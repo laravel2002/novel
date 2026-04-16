@@ -53,7 +53,8 @@ d:\novel
         ├── prisma.ts       # Singleton kế nối Database Prisma
         ├── redis.ts        # Singleton kết nối Redis
         ├── cloudflare-r2.ts# Cấu hình lưu trữ R2
-        ├── api-response.ts # Formatter chuẩn hóa HTTP Response (Web + Mobile)
+        ├── api-handler.ts  # ⭐ Wrapper apiHandler() — CORS + Error + Response chuẩn tự động
+        ├── api-response.ts # Formatter chuẩn hóa HTTP Response (Legacy, backward compat)
         ├── api-auth.ts     # Helper logic xác thực đa nền tảng
         ├── cors.ts         # Cấu hình CORS chung cho API
         └── ...
@@ -84,6 +85,7 @@ d:\novel
 
 ## 4. 📝 Quy Tắc Phát Triển Cốt Lõi (Cheatsheet)
 1. **Separation of Concerns**: Lớp hiển thị UI (`app/..`, `src/components/..`) TUYỆT ĐỐI không được query trực tiếp Prisma. Phải gọi qua hệ thống Server Actions hoặc Functions nắm trong `src/features/.../services`.
-2. **Type-Safety**: Xóa sổ từ khóa `any`. Ưu tiên sử dụng utility types của Prisma như `Prisma.StoryGetPayload<{}>`.
-3. **Offline-first UX**: Frontend sử dụng triệt để `localStorage` cho lịch sử đọc (`AG_READING_HISTORY`) và sync về server trong background.
-4. **Client Directive**: Các components thao tác `window` (LocalStorage, Events) hay `useState`/`useEffect` bắt buộc có `"use client"` ở ngọn file. Mặc định tất cả các file còn lại là React Server Components.
+2. **API Route Pattern**: Mọi API route trong `app/api/` **BẮT BUỘC** dùng `apiHandler()` wrapper từ `@/lib/api-handler.ts`. Route file chỉ validate input → gọi service → trả kết quả qua `ctx.success()`, `ctx.paginated()`, `ctx.error()`. CORS + Error handling + metadata được wrapper xử lý tự động.
+3. **Type-Safety**: Xóa sổ từ khóa `any`. Ưu tiên sử dụng utility types của Prisma như `Prisma.StoryGetPayload<{}>`.
+4. **Offline-first UX**: Frontend sử dụng triệt để `localStorage` cho lịch sử đọc (`AG_READING_HISTORY`) và sync về server trong background.
+5. **Client Directive**: Các components thao tác `window` (LocalStorage, Events) hay `useState`/`useEffect` bắt buộc có `"use client"` ở ngọn file. Mặc định tất cả các file còn lại là React Server Components.

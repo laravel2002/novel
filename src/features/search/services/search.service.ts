@@ -53,4 +53,27 @@ export const SearchService = {
       total,
     };
   },
+
+  /**
+   * Tìm kiếm truyện với format dành riêng cho Mobile App.
+   * Map lại field names: coverUrl → coverImage để phù hợp convention Mobile.
+   */
+  async searchForMobile(params: SearchParams) {
+    const result = await this.search(params);
+
+    const formattedStories = result.stories.map((s) => ({
+      id: s.id,
+      slug: s.slug,
+      title: s.title,
+      coverImage: s.coverUrl,
+      author: s.author,
+      status: s.status,
+      updatedAt: s.updatedAt,
+    }));
+
+    return {
+      stories: formattedStories,
+      total: result.total,
+    };
+  },
 };

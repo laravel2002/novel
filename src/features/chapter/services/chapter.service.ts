@@ -108,5 +108,28 @@ export const ChapterService = {
       prevChapter,
       nextChapter
     };
+  },
+
+  /**
+   * Lấy chi tiết chương với format dành riêng cho Mobile App.
+   * Trả về cấu trúc gọn nhẹ: chapterInfo, content, nextChapterId, prevChapterId.
+   */
+  async getChapterDetailForMobile(chapterId: number) {
+    const chapter = await this.getChapterDetail(chapterId);
+    if (!chapter) return null;
+
+    return {
+      chapterInfo: {
+        id: chapter.id,
+        chapterNumber: chapter.chapterNum,
+        title: chapter.title,
+        storyTitle: chapter.Story.title,
+        storySlug: chapter.Story.slug,
+        createdAt: chapter.createdAt,
+      },
+      content: chapter.content,
+      nextChapterId: chapter.nextChapter?.id ?? null,
+      prevChapterId: chapter.prevChapter?.id ?? null,
+    };
   }
 };
