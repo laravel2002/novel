@@ -75,6 +75,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
 
-  // ==================== DEBUG (chỉ bật trong development) ====================
-  debug: process.env.NODE_ENV === "development",
+  // ==================== EVENT LOGGING (Debug Google Login) ====================
+  events: {
+    async signIn({ user, account, profile }) {
+      console.log("[Auth Event] signIn:", {
+        userId: user?.id,
+        email: user?.email,
+        provider: account?.provider,
+        profileEmail: profile?.email,
+      });
+    },
+    async createUser({ user }) {
+      console.log("[Auth Event] createUser:", {
+        userId: user?.id,
+        email: user?.email,
+      });
+    },
+    async linkAccount({ user, account }) {
+      console.log("[Auth Event] linkAccount:", {
+        userId: user?.id,
+        provider: account?.provider,
+      });
+    },
+  },
+
+  // ==================== DEBUG (BẬT TẠM ĐỂ XEM LỖI GOOGLE LOGIN) ====================
+  debug: true,
 });
+
