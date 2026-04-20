@@ -100,3 +100,54 @@ export async function getChapterContent(key: string): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Uploads an image (Buffer) to Cloudflare R2
+ * @param key The path/key in the bucket (e.g., "covers/slug-cover.jpg")
+ * @param buffer The image data as a Buffer or ArrayBuffer
+ * @param contentType The MIME type (e.g., "image/jpeg", "image/png")
+ * @returns The public URL of the uploaded image, or null if failed
+ */
+export async function uploadCoverImage(
+  key: string,
+  buffer: Buffer | ArrayBuffer,
+  contentType: string,
+): Promise<string | null> {
+  if (!R2_URL) {
+    console.error("R2_URL is not configured.");
+    return null;
+  }
+
+  try {
+    const url = `${R2_URL}/${key}`;
+    
+    // Gửi buffer ảnh thẳng lên R2
+    const response = await r2Client.fetch(url, {
+      method: "PUT",
+      body: buffer as any, // Ép kiểu để aws4fetch chấp nhận Buffer
+      headers: {
+        "Content-Type": contentType,
+        // Có thể thêm Cache-Control để trình duyệt cache ảnh lâu hơn
+        "Cache-Control": "public, max-age=31536000, immutable", 
+      },
+    });
+
+    if (!response.ok) {
+      console.error(
+        `Failed to upload image to R2: ${response.status} ${response.statusText}`,
+      );
+      return null;
+    }
+
+    // Nếu upload thành công, tạo đường dẫn Public URL để lưu vào Database
+    if (R2_PUBLIC_DOMAIN) {
+      return `${R2_PUBLIC_DOMAIN.replace(/\/$/, "")}/${key}`;
+    }
+
+    // Fallback trả về key nếu không có cấu hình domain công khai
+    return key;
+  } catch (error) {
+    console.error("Error uploading image to R2:", error);
+    return null;
+  }
+}
