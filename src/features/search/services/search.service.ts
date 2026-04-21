@@ -6,24 +6,42 @@ export interface SearchParams {
   limit?: number;
 }
 
+// Hàm hỗ trợ chuyển đổi Tiếng Việt có dấu thành không dấu và thay khoảng trắng thành dấu gạch ngang (giống slug)
+function createSearchSlug(text: string): string {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Xóa dấu
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D") // Đổi chữ đ
+    .trim()
+    .replace(/\s+/g, "-"); // Thay khoảng trắng bằng gạch ngang
+}
+
 export const SearchService = {
   /**
-   * Tìm kiếm truyện theo tiêu đề hoặc tác giả
+   * Tìm kiếm truyện theo tiêu đề hoặc tác giả (Hỗ trợ gõ KHÔNG DẤU)
    */
   async search(params: SearchParams) {
     const { query, page = 1, limit = 20 } = params;
     const skip = (page - 1) * limit;
 
-    if (!query.trim()) {
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) {
       return { stories: [], total: 0 };
     }
 
-    // Sử dụng logic contains (mode: insensitive) làm fallback tin cậy
-    // vì không phải DB nào cũng config Full Text Search ngay từ đầu.
+    // Tạo từ khóa tìm kiếm dạng slug (ví dụ: "Hào môn" -> "hao-mon")
+    const searchSlug = createSearchSlug(trimmedQuery);
+
     const whereInput = {
       OR: [
-        { title: { contains: query, mode: "insensitive" as const } },
-        { author: { contains: query, mode: "insensitive" as const } },
+        // 1. Tìm chính xác theo những gì người dùng gõ (có dấu)
+        { title: { contains: trimmedQuery, mode: "insensitive" as const } },
+        { author: { contains: trimmedQuery, mode: "insensitive" as const } },
+
+        // 2. Tìm theo Slug để hỗ trợ trường hợp gõ KHÔNG DẤU
+        { slug: { contains: searchSlug, mode: "insensitive" as const } },
       ],
     };
 
@@ -56,7 +74,6 @@ export const SearchService = {
 
   /**
    * Tìm kiếm truyện với format dành riêng cho Mobile App.
-   * Map lại field names: coverUrl → coverImage để phù hợp convention Mobile.
    */
   async searchForMobile(params: SearchParams) {
     const result = await this.search(params);
@@ -67,8 +84,9 @@ export const SearchService = {
       title: s.title,
       coverImage: s.coverUrl,
       author: s.author,
+      // Map thêm các trường nếu Mobile cần
+      views: s.views,
       status: s.status,
-      updatedAt: s.updatedAt,
     }));
 
     return {
