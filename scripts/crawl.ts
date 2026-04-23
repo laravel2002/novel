@@ -99,14 +99,14 @@ async function loginTiemTruyenChu() {
       console.log("🍪 Đang nạp Session từ Cookies...");
       const cookies = JSON.parse(cookiesJson);
       const page = await browser.newPage();
-      
+
       // Puppeteer yêu cầu cookies phải có domain đúng
       await page.setCookie(...cookies);
-      
+
       // Kiểm tra xem cookie có hoạt động không bằng cách vào trang chủ
       await page.goto(BASE_URL, { waitUntil: "networkidle2" });
       const html = await page.content();
-      
+
       // Kiểm tra sự tồn tại của link Logout (chỉ có khi đã đăng nhập)
       if (html.includes('href="/logout"') || html.includes("ĐĂNG XUẤT")) {
         console.log("✅ Nạp Cookie thành công! Đã nhận session.");
@@ -114,7 +114,9 @@ async function loginTiemTruyenChu() {
         await page.close();
         return;
       } else {
-        console.log("⚠️  Cookie hết hạn hoặc không hợp lệ. Thử đăng nhập bằng Form...");
+        console.log(
+          "⚠️  Cookie hết hạn hoặc không hợp lệ. Thử đăng nhập bằng Form...",
+        );
       }
       await page.close();
     } catch (err) {
@@ -127,13 +129,17 @@ async function loginTiemTruyenChu() {
   const password = process.env.TTC_PASSWORD;
 
   if (!username || !password || username === "your_username_here") {
-    console.log("⚠️  Không có Cookie và cũng không có thông tin Login Form. Chạy ở chế độ Guest.");
+    console.log(
+      "⚠️  Không có Cookie và cũng không có thông tin Login Form. Chạy ở chế độ Guest.",
+    );
     return;
   }
 
   const page = await browser.newPage();
   try {
-    console.log(`🔐 Đang đăng nhập vào Tiệm Truyện Chữ via Form: ${username}...`);
+    console.log(
+      `🔐 Đang đăng nhập vào Tiệm Truyện Chữ via Form: ${username}...`,
+    );
     await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle2" });
 
     // Đợi input xuất hiện để tránh lỗi "not clickable"
@@ -154,7 +160,9 @@ async function loginTiemTruyenChu() {
       console.log("✅ Đăng nhập Form thành công!");
       isAuthenticated = true;
     } else {
-      console.log("❌ Đăng nhập Form thất bại. Có thể tài khoản của bạn là tài khoản Google?");
+      console.log(
+        "❌ Đăng nhập Form thất bại. Có thể tài khoản của bạn là tài khoản Google?",
+      );
     }
   } catch (error) {
     console.error("❌ Lỗi khi đăng nhập Form:", (error as Error).message);
@@ -222,13 +230,13 @@ async function fetchHtmlWithPuppeteer(
 
       // Kiểm tra xem có bị redirect về trang login không (Logic mới: Dựa trên link /logout)
       if (!html.includes('href="/logout"') && !html.includes("ĐĂNG XUẤT")) {
-         if (url.includes("/danh-sach") && !url.includes("/login")) {
-            console.log("⚠️  Không tìm thấy session. Đang thử đăng nhập lại...");
-            await page.close();
-            isAuthenticated = false;
-            await loginTiemTruyenChu();
-            return fetchHtmlWithPuppeteer(url, retries - 1, waitForSelector);
-         }
+        if (url.includes("/danh-sach") && !url.includes("/login")) {
+          console.log("⚠️  Không tìm thấy session. Đang thử đăng nhập lại...");
+          await page.close();
+          isAuthenticated = false;
+          await loginTiemTruyenChu();
+          return fetchHtmlWithPuppeteer(url, retries - 1, waitForSelector);
+        }
       }
 
       await page.close();
@@ -446,7 +454,7 @@ async function saveStoryListToDB(stories: ScrapedStory[]) {
     let dbStory =
       (await prisma.story.findUnique({ where: { sourceId } })) ||
       (await prisma.story.findUnique({ where: { slug } }));
-    
+
     if (dbStory) {
       // User yêu cầu: bỏ qua các truyện đã cào tên (đã tồn tại)
       console.log(`    ⏭️ Bỏ qua truyện đã tồn tại: ${title}`);
@@ -480,17 +488,22 @@ async function saveStoryListToDB(stories: ScrapedStory[]) {
 }
 
 // ============================================================================
-// 📖 PHASE 2: CÀO CHI TIẾT TRUYỆN
 // ============================================================================
-async function phase2_crawlStoryDetails(storyId?: number) {
+// 📖 PHASE 2: CÀO CHI TIẾT TRUYỆN (CHẠY SONG SONG CHỐNG LỖI)
+// ============================================================================
+async function phase2_crawlStoryDetails(
+  storyId?: number,
+  concurrency: number = 3,
+) {
+  // Giảm default xuống 3 cho an toàn
   console.log(
     "\n" +
       "=".repeat(60) +
-      "\n📖 PHASE 2: Cào lại chi tiết & Upload R2\n" +
+      `\n📖 PHASE 2: Cào lại chi tiết & Upload R2 (🔀 ${concurrency} Tabs song song)\n` +
       "=".repeat(60),
   );
 
-  const stories = await prisma.story.findMany({
+  const allStories = await prisma.story.findMany({
     where: storyId ? { id: storyId } : {},
     select: {
       id: true,
@@ -502,20 +515,34 @@ async function phase2_crawlStoryDetails(storyId?: number) {
     },
   });
 
-  console.log(`📚 Tìm thấy ${stories.length} truyện. Bắt đầu xử lý...\n`);
-
-  for (let i = 0; i < stories.length; i++) {
-    const story = stories[i];
-    if (!story.sourceId) continue;
-
+  const tasks = allStories.filter((story) => {
+    if (!story.sourceId) return false;
     const isAlreadyOnR2 =
       story.coverUrl && !story.coverUrl.includes("tiemtruyenchu");
-    if (story.description && isAlreadyOnR2) continue;
+    if (story.description && isAlreadyOnR2) return false;
+    return true;
+  });
 
+  console.log(
+    `📚 Tìm thấy ${tasks.length} truyện cần cập nhật chi tiết. Bắt đầu xử lý...\n`,
+  );
+
+  if (tasks.length === 0) {
+    console.log("✅ Tất cả truyện đã có đầy đủ chi tiết và ảnh bìa R2.");
+    return;
+  }
+
+  let successCount = 0;
+  let errorCount = 0;
+  let processedCount = 0;
+
+  const executing = new Set<Promise<void>>();
+
+  const processStory = async (story: (typeof tasks)[0]) => {
     try {
-      console.log(
-        `📖 [${i + 1}/${stories.length}] Đang lấy dữ liệu mới: "${story.title}"...`,
-      );
+      // Đánh lừa Cloudflare: Delay ngẫu nhiên từ 0.5s đến 2s trước khi mở tab
+      // Tránh việc 5 tab cùng đâm 1 lúc
+      await delay(Math.floor(Math.random() * 1500) + 500);
 
       const url = `${BASE_URL}/truyen/${story.sourceId}`;
       const html = await fetchHtmlWithPuppeteer(url, 3, ".content-text");
@@ -527,6 +554,14 @@ async function phase2_crawlStoryDetails(storyId?: number) {
         null;
       const descEl = $(".content-text");
       const description = descEl.length > 0 ? nfc(descEl.text().trim()) : null;
+
+      // Nếu không lấy được mô tả -> Có thể dính Cloudflare, văng lỗi ngay để retry lần sau
+      if (!description) {
+        throw new Error(
+          "Không lấy được nội dung HTML (Bị Cloudflare chặn hoặc sai Selector).",
+        );
+      }
+
       const views =
         parseInt(
           $(".stat-item")
@@ -553,9 +588,10 @@ async function phase2_crawlStoryDetails(storyId?: number) {
         }
       });
 
-      // Xử lý Upload Ảnh Bìa
       let finalCoverUrl = story.coverUrl;
       let sourceCoverUrl = coverUrlRaw || story.coverUrl;
+      const isAlreadyOnR2 =
+        story.coverUrl && !story.coverUrl.includes("tiemtruyenchu");
 
       if (sourceCoverUrl) {
         if (sourceCoverUrl.startsWith("//"))
@@ -565,7 +601,6 @@ async function phase2_crawlStoryDetails(storyId?: number) {
       }
 
       if (sourceCoverUrl && (!isAlreadyOnR2 || !finalCoverUrl)) {
-        console.log(`  🖼️  Đang tải ảnh bìa: ${sourceCoverUrl}`);
         const imageData = await fetchImageBuffer(sourceCoverUrl);
         if (imageData) {
           let ext =
@@ -582,10 +617,7 @@ async function phase2_crawlStoryDetails(storyId?: number) {
             imageData.buffer,
             imageData.contentType,
           );
-          if (uploadedUrl) {
-            finalCoverUrl = uploadedUrl;
-            console.log(`  ✅ Đã lên R2: ${r2Key}`);
-          }
+          if (uploadedUrl) finalCoverUrl = uploadedUrl;
         } else {
           finalCoverUrl = sourceCoverUrl;
         }
@@ -601,37 +633,66 @@ async function phase2_crawlStoryDetails(storyId?: number) {
         },
       });
 
-      // Xử lý Thể loại (Categories)
+      // FIX LỖI DB: DÙNG UPSERT THAY VÌ FIND & CREATE ĐỂ TRÁNH XUNG ĐỘT LUỒNG SONG SONG
       if (categories.length > 0) {
         for (const catName of categories) {
           const rawCatName = nfc(catName);
           const catSlug = createSlug(rawCatName);
-          let cat = await prisma.category.findUnique({ where: { slug: catSlug } });
-          if (!cat) {
-            cat = await prisma.category.create({
-              data: { name: rawCatName, slug: catSlug },
-            });
-          }
 
-          const linking = await prisma.storyCategory.findUnique({
-            where: {
-              storyId_categoryId: { storyId: story.id, categoryId: cat.id },
-            },
-          });
-          if (!linking) {
-            await prisma.storyCategory.create({
-              data: { storyId: story.id, categoryId: cat.id },
+          try {
+            const cat = await prisma.category.upsert({
+              where: { slug: catSlug },
+              update: {}, // Nếu có rồi thì không làm gì
+              create: { name: rawCatName, slug: catSlug }, // Chưa có thì tạo
             });
+
+            await prisma.storyCategory.upsert({
+              where: {
+                storyId_categoryId: { storyId: story.id, categoryId: cat.id },
+              },
+              update: {},
+              create: { storyId: story.id, categoryId: cat.id },
+            });
+          } catch (dbErr) {
+            // Bỏ qua lỗi khóa DB nhẹ nếu xảy ra trùng lặp cực đỉnh
+            console.log(
+              `    ⚠️ Bỏ qua lỗi tạo thể loại "${catName}" (luồng khác đã lo)`,
+            );
           }
         }
-        console.log(`  🏷️  Cập nhật ${categories.length} thể loại: ${categories.join(", ")}`);
       }
 
-      console.log(`  ✨ Cập nhật thành công!`);
+      successCount++;
     } catch (err) {
-      console.error(`  ❌ Lỗi khi xử lý truyện này:`, err);
+      errorCount++;
+      // In ra TOÀN BỘ LỖI để dễ debug
+      console.error(`  ❌ Lỗi ở truyện "${story.title}":`, err);
+    }
+  };
+
+  for (const story of tasks) {
+    const promise = processStory(story).then(() => {
+      executing.delete(promise);
+    });
+
+    executing.add(promise);
+
+    if (executing.size >= concurrency) {
+      await Promise.race(executing);
+    }
+
+    processedCount++;
+    if (processedCount % 5 === 0) {
+      console.log(
+        `🔄 Tiến trình Phase 2: ${processedCount}/${tasks.length} truyện | ✅ ${successCount} | ❌ ${errorCount}`,
+      );
     }
   }
+
+  await Promise.all(executing);
+  console.log(
+    `\n🎉 Phase 2 hoàn thành: ✅ ${successCount} thành công | ❌ ${errorCount} lỗi!`,
+  );
 }
 
 // ============================================================================

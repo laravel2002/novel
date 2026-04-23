@@ -40,7 +40,7 @@ export function SearchDesktop() {
       );
       if (response.ok) {
         const data = await response.json();
-        const searchResults = data.stories || [];
+        const searchResults = data.data || data.stories || [];
         setResults(searchResults);
         setIsOpen(searchResults.length > 0);
       } else {

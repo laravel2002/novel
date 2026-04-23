@@ -43,7 +43,7 @@ export function ExploreMobileUI({ trendingStories }: ExploreMobileUIProps) {
       );
       if (response.ok) {
         const data = await response.json();
-        setResults(data.stories || []);
+        setResults(data.data || data.stories || []);
       } else {
         setResults([]);
       }

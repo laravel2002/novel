@@ -44,7 +44,7 @@ export function SearchMobile() {
       );
       if (response.ok) {
         const data = await response.json();
-        setResults(data.stories || []);
+        setResults(data.data || data.stories || []);
       } else {
         setResults([]);
       }
