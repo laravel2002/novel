@@ -1,28 +1,24 @@
-import { NextResponse } from "next/server";
-import { getComments } from "@/services/comments";
+import { apiHandler, createOptionsHandler, parsePageParams, buildPagination, parseIntParam } from "@/lib/api-handler";
+import { CommentService } from "@/features/comment/services/comment.service";
 
-export async function GET(
-  req: Request,
-  { params }: { params: Promise<{ chapterId: string }> },
-) {
-  try {
-    const { chapterId } = await params;
-    const { searchParams } = new URL(req.url);
-    const paragraphIdParam = searchParams.get("paragraphId");
+export const OPTIONS = createOptionsHandler();
 
-    // Khả năng tương thích kiểu cũ (FastAPI)
-    const paraId = paragraphIdParam || searchParams.get("paragraph_id");
+export const GET = apiHandler(async (req, ctx, routeContext) => {
+  const { chapterId } = await (routeContext as { params: Promise<{ chapterId: string }> }).params;
+  const { searchParams } = new URL(req.url);
+  const paragraphIdStr = searchParams.get("paragraphId") || searchParams.get("paragraph_id");
+  const paragraphId = paragraphIdStr ? parseIntParam(paragraphIdStr, 0) || undefined : undefined;
+  const { page, limit } = parsePageParams(searchParams, { limit: 50 });
 
-    const paragraphId = paraId !== null ? parseInt(paraId, 10) : undefined;
+  const result = await CommentService.getComments({
+    chapterId: parseInt(chapterId, 10),
+    paragraphId,
+    page,
+    limit,
+  });
 
-    const comments = await getComments(parseInt(chapterId, 10), paragraphId);
-
-    return NextResponse.json(comments);
-  } catch (error) {
-    console.error("Lỗi lấy bình luận:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
-  }
-}
+  return ctx.paginated(
+    result.comments,
+    buildPagination(page, limit, result.total)
+  );
+});

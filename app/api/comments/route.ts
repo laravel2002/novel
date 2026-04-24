@@ -1,33 +1,30 @@
-import { NextResponse } from "next/server";
-import { createComment } from "@/services/comments";
-import { auth } from "@/auth";
+import { apiHandler, createOptionsHandler } from "@/lib/api-handler";
+import { getApiAuthUser } from "@/lib/api-auth";
+import { CommentService } from "@/features/comment/services/comment.service";
 
-export async function POST(req: Request) {
-  try {
-    const session = await auth();
-    // Bắt buộc xác thực người dùng từ session server cho an toàn
-    if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+export const OPTIONS = createOptionsHandler();
 
-    const body = await req.json();
-    const { storyId, chapterId, paragraphId, content, isSpoiler } = body;
-
-    const comment = await createComment({
-      userId: session.user.id,
-      storyId,
-      chapterId,
-      paragraphId,
-      content,
-      isSpoiler: isSpoiler || false,
-    });
-
-    return NextResponse.json(comment);
-  } catch (error) {
-    console.error("Lỗi tạo bình luận:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+export const POST = apiHandler(async (req, ctx) => {
+  const user = await getApiAuthUser(req);
+  if (!user) {
+    return ctx.error("Vui lòng đăng nhập để bình luận", 401);
   }
-}
+
+  const body = await req.json();
+  const { storyId, chapterId, paragraphId, content, isSpoiler } = body;
+
+  if (!storyId || !content) {
+    return ctx.error("Thiếu storyId hoặc nội dung bình luận", 400);
+  }
+
+  const comment = await CommentService.createComment({
+    userId: user.id as string,
+    storyId,
+    chapterId,
+    paragraphId,
+    content,
+    isSpoiler,
+  });
+
+  return ctx.success(comment, 201);
+});

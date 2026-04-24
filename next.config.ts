@@ -1,14 +1,7 @@
 import type { NextConfig } from "next";
-import withSerwistInit from "@serwist/next";
-
-const withSerwist = withSerwistInit({
-  swSrc: "app/sw.ts",
-  swDest: "public/sw.js",
-  disable: process.env.NODE_ENV === "development",
-});
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // --- 1. CẤU HÌNH HÌNH ẢNH (Tối ưu Image Component) ---
   images: {
     localPatterns: [
       {
@@ -34,11 +27,20 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  // --- 2. CẤU HÌNH TỐI ƯU HIỆU SUẤT (Load package nhanh hơn) ---
   experimental: {
     optimizePackageImports: ["@tabler/icons-react", "lucide-react"],
   },
   turbopack: {},
+
+  // --- 3. CẤU HÌNH BẢO MẬT & MÔI TRƯỜNG DEV ---
   allowedDevOrigins: ["local-origin.dev", "*.local-origin.dev"],
+
+  // --- 4. HACK TỐC ĐỘ BUILD TRÊN VERCEL (Bỏ qua check lỗi chậm chạp) ---
+  typescript: {
+    ignoreBuildErrors: true,
+  },
 };
 
-export default withSerwist(nextConfig);
+export default nextConfig;

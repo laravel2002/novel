@@ -14,14 +14,12 @@ import { headers } from "next/headers";
 import { getDeviceTypeFromHeaders } from "@/lib/device";
 import { DeviceProvider } from "@/components/providers/DeviceProvider";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
-import { Navbar } from "@/components/layout/Navbar";
-import { MobileNavigation } from "@/components/layout/MobileNavigation";
-import { Footer } from "@/components/layout/Footer";
 import { BookmarkProvider } from "@/lib/contexts/BookmarkContext";
 import { ReadingProgressProvider } from "@/lib/contexts/ReadingProgressContext";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { ReadingSettingsProvider } from "@/lib/contexts/ReadingSettingsContext";
+import { auth } from "@/lib/auth/auth";
 
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans" });
 
@@ -86,6 +84,7 @@ export default async function RootLayout({
 }>) {
   const headersList = await headers();
   const deviceType = getDeviceTypeFromHeaders(headersList);
+  const session = await auth();
 
   return (
     <html
@@ -97,7 +96,7 @@ export default async function RootLayout({
         className={`${beVietnamPro.variable} ${loraFont.variable} ${sourceSerif.variable} antialiased bg-background text-foreground tracking-tight`}
       >
         <DeviceProvider initialDevice={deviceType}>
-          <AuthProvider>
+          <AuthProvider session={session}>
             <ThemeProvider
               attribute="class"
               defaultTheme="system"
@@ -108,17 +107,9 @@ export default async function RootLayout({
               <ReadingSettingsProvider>
                 <BookmarkProvider>
                   <ReadingProgressProvider>
-                    <div className="relative flex min-h-screen w-full flex-col">
-                      <Navbar />
-                      {/* Add main root padding bottom for mobile nav bar */}
-                      <main className="flex-1 pb-16 md:pb-0">
-                        {children}
-                        <SpeedInsights />
-                        <Analytics />
-                      </main>
-                      <Footer />
-                      <MobileNavigation />
-                    </div>
+                    {children}
+                    <SpeedInsights />
+                    <Analytics />
                   </ReadingProgressProvider>
                 </BookmarkProvider>
               </ReadingSettingsProvider>

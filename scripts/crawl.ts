@@ -1,45 +1,39 @@
+import "dotenv/config";
 import * as cheerio from "cheerio";
-import { prisma } from "../lib/prisma"; // HTTP adapter — không cần transaction
+import { prisma } from "../src/lib/prisma"; // HTTP adapter
+import {
+  uploadChapterContent,
+  uploadCoverImage,
+} from "../src/features/chapter/services/storage";
+
+// --- IMPORT BỘ VŨ KHÍ PUPPETEER ---
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+import { Browser, Page } from "puppeteer";
+
+// Kích hoạt chế độ tàng hình chống Cloudflare
+puppeteer.use(StealthPlugin());
 
 // ============================================================================
 // 🔧 CẤU HÌNH & KIỂU DỮ LIỆU
 // ============================================================================
-const BASE_URL = "https://www.tiemtruyenchu.com";
-const DELAY_MS = 1500; // Delay cơ bản giữa các batch (ms)
-const DELAY_JITTER = 0.5; // Jitter ±50% cho random delay
-const DEFAULT_CONCURRENCY = 5; // Số chương cào song song mặc định
+const BASE_URL = "https://tiemtruyenchu.com"; // Đã bỏ www để chuẩn URL gốc
+const DEFAULT_CONCURRENCY = 5; // PUPPETEER TỐN RAM, CHỈ NÊN CHẠY 3-5 TAB SONG SONG
 
-// 🛡️ Pool User-Agent xoay vòng — giả lập nhiều trình duyệt khác nhau
-const USER_AGENTS = [
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:132.0) Gecko/20100101 Firefox/132.0",
-  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0",
-  "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:132.0) Gecko/20100101 Firefox/132.0",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 OPR/115.0.0.0",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:132.0) Gecko/20100101 Firefox/132.0",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-];
+let globalBrowser: Browser | null = null;
+let isAuthenticated = false;
+let requestCount = 0;
 
-// Lấy User-Agent ngẫu nhiên
-function getRandomUA(): string {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-// Kiểu dữ liệu từ AJAX API danh sách truyện
 interface ScrapedStory {
   id: string | number;
   title: string;
   author: string;
-  category: string;
+  category?: string;
   total_chapters: string | number;
   status: string;
-  formattedDate?: string;
+  coverUrl?: string;
 }
 
-// Kiểu dữ liệu chi tiết truyện (parse từ HTML)
 interface StoryDetail {
   coverUrl: string | null;
   description: string | null;
@@ -48,7 +42,6 @@ interface StoryDetail {
   chapterCount: number;
 }
 
-// Kiểu dữ liệu nội dung chương (parse từ HTML)
 interface ChapterData {
   chapterNum: number;
   title: string;
@@ -56,10 +49,9 @@ interface ChapterData {
 }
 
 // ============================================================================
-// 🛠️ HÀM TIỆN ÍCH
+// 🛠️ HÀM TIỆN ÍCH & TRÌNH DUYỆT
 // ============================================================================
 
-// Tạo slug chuẩn SEO từ text tiếng Việt
 function createSlug(text: string): string {
   return text
     .toLowerCase()
@@ -71,142 +63,268 @@ function createSlug(text: string): string {
     .replace(/\s+/g, "-");
 }
 
-// Chuẩn hoá Unicode NFD → NFC cho tiếng Việt
 function nfc(text: string): string {
   return text.normalize("NFC");
 }
 
-// Delay helper — có random jitter để tránh pattern đều đặn
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function randomDelay(baseMs: number = DELAY_MS): Promise<void> {
-  const jitter = baseMs * DELAY_JITTER;
-  const actual = baseMs + (Math.random() * 2 - 1) * jitter; // ±50%
-  await delay(Math.max(500, Math.round(actual)));
-}
 
-// Thống kê request để theo dõi rate limiting
-let requestCount = 0;
-let rateLimitHits = 0;
-let connectionErrors = 0;
-
-// Hỗ trợ fetch có Timeout (tránh 1 request bị kẹt vĩnh viễn làm treo 1 băng chuyền)
-async function fetchWithTimeout(
-  url: string,
-  options: RequestInit,
-  timeoutMs: number = 10000,
-): Promise<Response> {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      signal: controller.signal as unknown as AbortSignal, // Type check
+// Khởi động Trình duyệt Ảo
+async function initBrowser() {
+  if (!globalBrowser) {
+    console.log("⚙️  Khởi động Trình duyệt ảo (Puppeteer Stealth)...");
+    globalBrowser = await puppeteer.launch({
+      headless: true, // Đổi thành false nếu bạn muốn xem nó tự động click Cloudflare
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+      ],
     });
-    clearTimeout(id);
-    return response;
-  } catch (error: unknown) {
-    clearTimeout(id);
-    if ((error as Error).name === "AbortError") {
-      throw new Error(`Request Timeout sau ${timeoutMs}ms`);
+  }
+  return globalBrowser;
+}
+
+// Hàm đăng nhập
+async function loginTiemTruyenChu() {
+  if (isAuthenticated) return;
+
+  const browser = await initBrowser();
+
+  // ƯU TIÊN 1: Đăng nhập bằng COOKIE (Dành cho tài khoản Google hoặc khi Form thất bại)
+  const cookiesJson = process.env.TTC_COOKIES_JSON;
+  if (cookiesJson && cookiesJson !== "your_cookies_json_here") {
+    try {
+      console.log("🍪 Đang nạp Session từ Cookies...");
+      const cookies = JSON.parse(cookiesJson);
+      const page = await browser.newPage();
+
+      // Puppeteer yêu cầu cookies phải có domain đúng
+      await page.setCookie(...cookies);
+
+      // Kiểm tra xem cookie có hoạt động không bằng cách vào trang chủ
+      await page.goto(BASE_URL, { waitUntil: "networkidle2" });
+      const html = await page.content();
+
+      // Kiểm tra sự tồn tại của link Logout (chỉ có khi đã đăng nhập)
+      if (html.includes('href="/logout"') || html.includes("ĐĂNG XUẤT")) {
+        console.log("✅ Nạp Cookie thành công! Đã nhận session.");
+        isAuthenticated = true;
+        await page.close();
+        return;
+      } else {
+        console.log(
+          "⚠️  Cookie hết hạn hoặc không hợp lệ. Thử đăng nhập bằng Form...",
+        );
+      }
+      await page.close();
+    } catch (err) {
+      console.error("❌ Lỗi khi nạp Cookie:", (err as Error).message);
     }
-    throw error;
+  }
+
+  // ƯU TIÊN 2: Đăng nhập bằng FORM (Username/Password)
+  const username = process.env.TTC_USERNAME;
+  const password = process.env.TTC_PASSWORD;
+
+  if (!username || !password || username === "your_username_here") {
+    console.log(
+      "⚠️  Không có Cookie và cũng không có thông tin Login Form. Chạy ở chế độ Guest.",
+    );
+    return;
+  }
+
+  const page = await browser.newPage();
+  try {
+    console.log(
+      `🔐 Đang đăng nhập vào Tiệm Truyện Chữ via Form: ${username}...`,
+    );
+    await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle2" });
+
+    // Đợi input xuất hiện để tránh lỗi "not clickable"
+    await page.waitForSelector("input[name='username']", { timeout: 10000 });
+
+    // Điền form
+    await page.type("input[name='username']", username);
+    await page.type("input[name='password']", password);
+
+    // Click login
+    await Promise.all([
+      page.click("button[type='submit']"),
+      page.waitForNavigation({ waitUntil: "networkidle2" }),
+    ]);
+
+    const html = await page.content();
+    if (html.includes('href="/logout"') || html.includes("ĐĂNG XUẤT")) {
+      console.log("✅ Đăng nhập Form thành công!");
+      isAuthenticated = true;
+    } else {
+      console.log(
+        "❌ Đăng nhập Form thất bại. Có thể tài khoản của bạn là tài khoản Google?",
+      );
+    }
+  } catch (error) {
+    console.error("❌ Lỗi khi đăng nhập Form:", (error as Error).message);
+  } finally {
+    await page.close();
   }
 }
 
-// Lấy Headers ngẫu nhiên mượt hơn, giống trình duyệt xịn
-function getRandomHeaders(): Record<string, string> {
-  const isMobile = Math.random() > 0.8; // 20% giả lập mobile
-  const ua = getRandomUA();
-
-  const headers: Record<string, string> = {
-    "User-Agent": ua,
-    Accept:
-      "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    DNT: "1",
-    Connection: "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
-    "Sec-Fetch-Dest": "document",
-    "Sec-Fetch-Mode": "navigate",
-    "Sec-Fetch-Site": "same-origin",
-    "Sec-Fetch-User": "?1",
-    "Cache-Control": "max-age=0",
-    Referer: "https://www.google.com/", // Đa dạng referer (từ google hoặc từ trang chủ)
-  };
-
-  // Nếu là trình duyệt xịn đời mới (Chromium >= 110)
-  if (ua.includes("Chrome/") && parseInt(ua.split("Chrome/")[1]) >= 110) {
-    headers["sec-ch-ua"] = '"Chromium";v="131", "Not_A Brand";v="24"';
-    headers["sec-ch-ua-mobile"] = isMobile ? "?1" : "?0";
-    headers["sec-ch-ua-platform"] = isMobile ? '"Android"' : '"Windows"';
+// Đóng Trình duyệt
+async function closeBrowser() {
+  if (globalBrowser) {
+    console.log("⚙️  Đang đóng Trình duyệt ảo...");
+    await globalBrowser.close();
+    globalBrowser = null;
   }
-
-  return headers;
 }
 
-// Fetch wrapper chống block (Phiên bản cực xịn cho BĂNG CHUYỀN)
-async function fetchWithRetry(url: string, retries = 5): Promise<Response> {
+// Hàm lấy HTML vượt rào Cloudflare bằng Puppeteer
+async function fetchHtmlWithPuppeteer(
+  url: string,
+  retries = 3,
+  waitForSelector?: string,
+): Promise<string> {
+  const browser = await initBrowser();
+
   for (let i = 0; i < retries; i++) {
+    let page: Page | null = null;
     try {
       requestCount++;
-      const res = await fetchWithTimeout(
-        url,
-        {
-          method: "GET",
-          headers: getRandomHeaders(),
-          redirect: "follow",
-        },
-        12000,
-      ); // Tối đa 12s cho 1 request
+      page = await browser.newPage();
 
-      // Xử lý Rate-Limit (429) hoặc Server tạch (503/502/504) hoặc Blocked (403)
-      if ([429, 503, 502, 504, 403].includes(res.status)) {
-        rateLimitHits++;
-        const retryAfter = res.headers.get("Retry-After");
-        // Nếu dính 403 (Cloudflare chặn) -> delay lâu hơn để qua mặt thuật toán
-        const waitSec = retryAfter
-          ? parseInt(retryAfter)
-          : res.status === 403
-            ? 15 + i * 20
-            : 5 + i * 10;
+      // Tối ưu hóa: Chặn load ảnh/css/fonts thừa thãi để cào lẹ hơn (Tùy chọn)
+      await page.setRequestInterception(true);
+      page.on("request", (req) => {
+        if (["image", "stylesheet", "font"].includes(req.resourceType())) {
+          req.abort();
+        } else {
+          req.continue();
+        }
+      });
 
-        console.log(
-          `  🛑 HTTP ${res.status} — server chặn/quá tải! Chờ ${waitSec}s... (hit #${rateLimitHits})`,
-        );
-        await delay(waitSec * 1000);
-        continue; // Chạy lại loop hiện tại
+      // Điều hướng đến trang web
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+
+      // Đợi element cụ thể thay vì delay cứng 2s
+      if (waitForSelector) {
+        try {
+          await page.waitForSelector(waitForSelector, { timeout: 10000 });
+        } catch (e) {
+          console.log(`⚠️  Timeout khi chờ selector: ${waitForSelector}`);
+        }
+      } else {
+        await delay(500);
       }
 
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res; // Thành công thì trả về
-    } catch (err: unknown) {
-      connectionErrors++;
-      if (i === retries - 1) throw err;
+      const html = await page.content();
 
-      // Lỗi kết nối, timeout, DNS.. (Không phải trả về HTTP code)
-      // Exponential backoff + Jitter: 2s, 4s, 8s, 16s... + random(0-2s)
-      const baseBackoff = Math.min(2000 * Math.pow(2, i), 30000);
-      const backoffWithJitter = baseBackoff + Math.floor(Math.random() * 2000);
+      // Kiểm tra xem có bị kẹt ở trang Cloudflare không
+      if (
+        html.includes("Just a moment...") ||
+        html.includes("cf-browser-verification")
+      ) {
+        throw new Error("Vẫn bị kẹt ở Cloudflare Challenge.");
+      }
 
+      // Kiểm tra xem có bị redirect về trang login không (Logic mới: Dựa trên link /logout)
+      if (!html.includes('href="/logout"') && !html.includes("ĐĂNG XUẤT")) {
+        if (url.includes("/danh-sach") && !url.includes("/login")) {
+          console.log("⚠️  Không tìm thấy session. Đang thử đăng nhập lại...");
+          await page.close();
+          isAuthenticated = false;
+          await loginTiemTruyenChu();
+          return fetchHtmlWithPuppeteer(url, retries - 1, waitForSelector);
+        }
+      }
+
+      await page.close();
+      return html;
+    } catch (error) {
+      if (page) await page.close();
       console.log(
-        `  ⟳ [Lỗi mạng] Retry ${i + 1}/${retries} cho ${url} (chờ ${(backoffWithJitter / 1000).toFixed(1)}s): ${(err as Error).message}`,
+        `  ⟳ [Lỗi Tab] Retry ${i + 1}/${retries} cho ${url}: ${(error as Error).message}`,
       );
-      await delay(backoffWithJitter);
+      await delay(3000 * (i + 1));
+      if (i === retries - 1) throw error;
     }
   }
-  throw new Error("Unreachable");
+  return "";
+}
+
+// Tải ảnh (Vẫn dùng fetch thường vì file ảnh thường không bị Cloudflare chặn)
+async function fetchImageBuffer(
+  url: string,
+): Promise<{ buffer: Buffer; contentType: string } | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const contentType = res.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await res.arrayBuffer();
+    return { buffer: Buffer.from(arrayBuffer), contentType };
+  } catch (error) {
+    console.error(`  ❌ Lỗi tải ảnh bìa (${url}):`, (error as Error).message);
+    return null;
+  }
+}
+
+// Bóc tách truyện
+function parseStoriesFromHTML($: cheerio.CheerioAPI): ScrapedStory[] {
+  const stories: ScrapedStory[] = [];
+  $(".story-item").each((_index, element) => {
+    const link = $(element).find("a.story-poster-container").attr("href");
+    const cover =
+      $(element).find("img.story-poster").attr("src") ||
+      $(element).find("img.story-poster").attr("data-src");
+    const title =
+      $(element).find("img.story-poster").attr("alt") ||
+      $(element).find("h3.story-title").text().trim();
+    const author = $(element)
+      .find(".story-meta i.fa-user-edit")
+      .parent()
+      .text()
+      .trim();
+    const chaptersText = $(element)
+      .find(".story-meta i.fa-list-ol")
+      .parent()
+      .text()
+      .trim();
+    const totalChapters = chaptersText.match(/\d+/)
+      ? parseInt(chaptersText.match(/\d+/)![0])
+      : 0;
+
+    if (title && link) {
+      const matchId = link.match(/\/truyen\/(\d+)/);
+      const sourceId = matchId ? matchId[1] : null;
+
+      if (sourceId) {
+        stories.push({
+          id: sourceId,
+          title: title,
+          author: author || "Đang cập nhật",
+          total_chapters: totalChapters,
+          status: "ONGOING",
+          coverUrl: cover?.startsWith("http") ? cover : `${BASE_URL}${cover}`,
+        });
+      }
+    }
+  });
+  return stories;
 }
 
 // ============================================================================
-// 📋 PHASE 1: CÀO DANH SÁCH TRUYỆN (AJAX API → DB + CSV)
+// 📋 PHASE 1 & 1.5: CÀO DANH SÁCH TRUYỆN
 // ============================================================================
 async function phase1_crawlStoryList() {
-  console.log("\n" + "=".repeat(60));
-  console.log("📋 PHASE 1: Cào danh sách truyện từ AJAX API");
-  console.log("=".repeat(60));
-
+  console.log(
+    "\n" +
+      "=".repeat(60) +
+      "\n📋 PHASE 1: Cào danh sách truyện\n" +
+      "=".repeat(60),
+  );
   let currentPage = 1;
   let totalPages = 1;
   let totalStories = 0;
@@ -214,44 +332,102 @@ async function phase1_crawlStoryList() {
   while (currentPage <= totalPages) {
     try {
       console.log(`\n⏳ Đang cào trang ${currentPage}/${totalPages}...`);
+      const url = `${BASE_URL}/danh-sach?page=${currentPage}`;
 
-      const url = new URL(`${BASE_URL}/danh-sach`);
-      url.searchParams.set("page", currentPage.toString());
-      url.searchParams.set("ajax", "1");
+      const html = await fetchHtmlWithPuppeteer(url, 3, ".story-item");
+      const $ = cheerio.load(html);
+      const stories = parseStoriesFromHTML($);
 
-      const response = await fetchWithRetry(url.toString());
-      const data = await response.json();
-
-      if (data.success && data.stories && data.stories.length > 0) {
-        if (currentPage === 1 && data.totalPages) {
-          totalPages = parseInt(data.totalPages);
-        }
-
-        // Lưu Database
-        await saveStoryListToDB(data.stories);
-        totalStories += data.stories.length;
-        console.log(
-          `✅ Trang ${currentPage}: ${data.stories.length} truyện → DB`,
-        );
-      } else {
-        console.log(`⚠️ Không có dữ liệu ở trang ${currentPage}. Dừng.`);
-        break;
+      if (currentPage === 1) {
+        let maxPage = 1;
+        $(".pagination .page-link").each((_, el) => {
+          const num = parseInt($(el).text());
+          if (!isNaN(num) && num > maxPage) maxPage = num;
+        });
+        totalPages = maxPage;
+        console.log(`🔍 Tìm thấy tổng cộng ${totalPages} trang.`);
       }
 
+      if (stories.length > 0) {
+        await saveStoryListToDB(stories);
+        totalStories += stories.length;
+        console.log(`✅ Trang ${currentPage}: ${stories.length} truyện → DB`);
+      } else {
+        console.log(
+          `⚠️ Không tìm thấy class truyện ở trang ${currentPage}. Dừng.`,
+        );
+        break;
+      }
       currentPage++;
-      await randomDelay();
     } catch (error) {
       console.error(`❌ Lỗi ở trang ${currentPage}:`, error);
       break;
     }
   }
-
-  console.log(
-    `\n🎉 Phase 1 hoàn thành: ${totalStories} truyện trên ${currentPage - 1} trang.`,
-  );
+  console.log(`\n🎉 Phase 1 hoàn thành: ${totalStories} truyện.`);
 }
 
-// Hàm lưu danh sách truyện vào DB (findUnique + create/update)
+async function phase1_crawlStoryListByCategory(categorySlug: string) {
+  console.log(
+    "\n" +
+      "=".repeat(60) +
+      `\n📋 PHASE 1.5: Cào truyện theo thể loại [${categorySlug}]\n` +
+      "=".repeat(60),
+  );
+
+  if (categorySlug === "all") {
+    const categories = await prisma.category.findMany({
+      select: { slug: true, name: true },
+    });
+    if (categories.length === 0) return console.log("⚠️ DB chưa có thể loại.");
+    for (const cat of categories) {
+      console.log(`\n⏳ [${cat.name}] Đang lấy 10 truyện mới nhất...`);
+      await fetchStoryListForCategory(cat.slug, 10);
+    }
+  } else {
+    await fetchStoryListForCategory(categorySlug, 50);
+  }
+  console.log(`\n🎉 Phase 1.5 hoàn thành.`);
+}
+
+async function fetchStoryListForCategory(
+  categorySlug: string,
+  targetStories: number,
+) {
+  let currentPage = 1;
+  let totalStories = 0;
+
+  while (totalStories < targetStories) {
+    try {
+      const url = `${BASE_URL}/danh-sach?cat=${categorySlug}&page=${currentPage}&sort=new_update`;
+      const html = await fetchHtmlWithPuppeteer(url, 3, ".story-item");
+      const $ = cheerio.load(html);
+      const stories = parseStoriesFromHTML($);
+      stories.forEach((s) => (s.category = categorySlug));
+
+      if (stories.length > 0) {
+        const needed = targetStories - totalStories;
+        const storiesToSave = stories.slice(0, needed);
+        await saveStoryListToDB(storiesToSave);
+        totalStories += storiesToSave.length;
+        console.log(
+          `  ✅ Trang ${currentPage}: ${storiesToSave.length} truyện → DB (Tổng: ${totalStories}/${targetStories})`,
+        );
+
+        const hasNextPage =
+          $(".pagination .page-item:last-child").not(".disabled").length > 0;
+        if (!hasNextPage || stories.length < 15) break;
+      } else {
+        break;
+      }
+      if (totalStories < targetStories) currentPage++;
+    } catch (error) {
+      console.error(`  ❌ Lỗi ở trang ${currentPage}:`, error);
+      break;
+    }
+  }
+}
+
 async function saveStoryListToDB(stories: ScrapedStory[]) {
   for (const story of stories) {
     const title = nfc(story.title);
@@ -262,68 +438,72 @@ async function saveStoryListToDB(stories: ScrapedStory[]) {
       : 0;
     const author = nfc(story.author || "Đang cập nhật");
     const status = story.status === "full" ? "COMPLETED" : "ONGOING";
+    const coverUrl = story.coverUrl || null;
 
     let categoryId: number | null = null;
-
-    // Xử lý Thể loại
     if (story.category) {
-      const catName = nfc(story.category);
-      const catSlug = createSlug(catName);
-      let cat = await prisma.category.findUnique({
-        where: { slug: catSlug },
-      });
-      if (!cat) {
+      const catSlug = createSlug(story.category);
+      let cat = await prisma.category.findUnique({ where: { slug: catSlug } });
+      if (!cat)
         cat = await prisma.category.create({
-          data: { name: catName, slug: catSlug },
+          data: { name: nfc(story.category), slug: catSlug },
         });
-      }
       categoryId = cat.id;
     }
 
-    // Xử lý Truyện — tìm theo sourceId trước, rồi theo slug
     let dbStory =
       (await prisma.story.findUnique({ where: { sourceId } })) ||
       (await prisma.story.findUnique({ where: { slug } }));
+
     if (dbStory) {
-      dbStory = await prisma.story.update({
-        where: { id: dbStory.id },
-        data: { title, author, status, remoteChapterCount, sourceId },
-      });
+      // User yêu cầu: bỏ qua các truyện đã cào tên (đã tồn tại)
+      console.log(`    ⏭️ Bỏ qua truyện đã tồn tại: ${title}`);
+      continue;
     } else {
       dbStory = await prisma.story.create({
-        data: { title, slug, author, status, remoteChapterCount, sourceId },
+        data: {
+          title,
+          slug,
+          author,
+          status,
+          remoteChapterCount,
+          sourceId,
+          coverUrl,
+        },
       });
     }
 
-    // Liên kết Truyện - Thể loại
     if (categoryId) {
       const linking = await prisma.storyCategory.findUnique({
         where: {
-          storyId_categoryId: {
-            storyId: dbStory.id,
-            categoryId: categoryId,
-          },
+          storyId_categoryId: { storyId: dbStory.id, categoryId: categoryId },
         },
       });
-      if (!linking) {
+      if (!linking)
         await prisma.storyCategory.create({
           data: { storyId: dbStory.id, categoryId: categoryId },
         });
-      }
     }
   }
 }
 
 // ============================================================================
-// 📖 PHASE 2: CÀO CHI TIẾT TRUYỆN (HTML → DB)
 // ============================================================================
-async function phase2_crawlStoryDetails(storyId?: number) {
-  console.log("\n" + "=".repeat(60));
-  console.log("📖 PHASE 2: Cào chi tiết truyện từ trang HTML");
-  console.log("=".repeat(60));
+// 📖 PHASE 2: CÀO CHI TIẾT TRUYỆN (CHẠY SONG SONG CHỐNG LỖI)
+// ============================================================================
+async function phase2_crawlStoryDetails(
+  storyId?: number,
+  concurrency: number = 3,
+) {
+  // Giảm default xuống 3 cho an toàn
+  console.log(
+    "\n" +
+      "=".repeat(60) +
+      `\n📖 PHASE 2: Cào lại chi tiết & Upload R2 (🔀 ${concurrency} Tabs song song)\n` +
+      "=".repeat(60),
+  );
 
-  // Lấy danh sách truyện cần crawl từ DB
-  const stories = await prisma.story.findMany({
+  const allStories = await prisma.story.findMany({
     where: storyId ? { id: storyId } : {},
     select: {
       id: true,
@@ -331,137 +511,193 @@ async function phase2_crawlStoryDetails(storyId?: number) {
       title: true,
       slug: true,
       description: true,
+      coverUrl: true,
     },
   });
 
-  console.log(`📚 Tìm thấy ${stories.length} truyện cần cào chi tiết.\n`);
+  const tasks = allStories.filter((story) => {
+    if (!story.sourceId) return false;
+    const isAlreadyOnR2 =
+      story.coverUrl && !story.coverUrl.includes("tiemtruyenchu");
+    if (story.description && isAlreadyOnR2) return false;
+    return true;
+  });
 
-  for (let i = 0; i < stories.length; i++) {
-    const story = stories[i];
+  console.log(
+    `📚 Tìm thấy ${tasks.length} truyện cần cập nhật chi tiết. Bắt đầu xử lý...\n`,
+  );
 
-    // Skip nếu không có sourceId (không biết URL gốc)
-    if (!story.sourceId) {
-      console.log(
-        `⏭️  [${i + 1}/${stories.length}] "${story.title}" — không có sourceId, bỏ qua.`,
-      );
-      continue;
-    }
+  if (tasks.length === 0) {
+    console.log("✅ Tất cả truyện đã có đầy đủ chi tiết và ảnh bìa R2.");
+    return;
+  }
 
-    // Skip nếu đã có description (đã crawl rồi)
-    if (story.description && !storyId) {
-      console.log(
-        `⏭️  [${i + 1}/${stories.length}] "${story.title}" — đã có chi tiết, bỏ qua.`,
-      );
-      continue;
-    }
+  let successCount = 0;
+  let errorCount = 0;
+  let processedCount = 0;
 
+  const executing = new Set<Promise<void>>();
+
+  const processStory = async (story: (typeof tasks)[0]) => {
     try {
-      console.log(
-        `📖 [${i + 1}/${stories.length}] Đang cào chi tiết: "${story.title}" (source: ${story.sourceId})...`,
-      );
+      // Đánh lừa Cloudflare: Delay ngẫu nhiên từ 0.5s đến 2s trước khi mở tab
+      // Tránh việc 5 tab cùng đâm 1 lúc
+      await delay(Math.floor(Math.random() * 1500) + 500);
 
-      const detail = await scrapeStoryDetailPage(story.sourceId);
-      if (!detail) {
-        console.log(`  ⚠️ Không thể parse chi tiết.`);
-        continue;
+      const url = `${BASE_URL}/truyen/${story.sourceId}`;
+      const html = await fetchHtmlWithPuppeteer(url, 3, ".content-text");
+      const $ = cheerio.load(html);
+
+      const coverUrlRaw =
+        $("img.story-poster").attr("data-src") ||
+        $("img.story-poster").attr("src") ||
+        null;
+      const descEl = $(".content-text");
+      const description = descEl.length > 0 ? nfc(descEl.text().trim()) : null;
+
+      // Nếu không lấy được mô tả -> Có thể dính Cloudflare, văng lỗi ngay để retry lần sau
+      if (!description) {
+        throw new Error(
+          "Không lấy được nội dung HTML (Bị Cloudflare chặn hoặc sai Selector).",
+        );
       }
 
-      // Cập nhật Story trong DB
+      const views =
+        parseInt(
+          $(".stat-item")
+            .first()
+            .find(".stat-val")
+            .text()
+            .trim()
+            .replace(/[,.\s]/g, ""),
+        ) || 0;
+
+      let chapterCount = 0;
+      $("button.nav-link").each((_, el) => {
+        const match = $(el)
+          .text()
+          .match(/Danh sách chương\s*\((\d+)\)/);
+        if (match) chapterCount = parseInt(match[1]);
+      });
+
+      const categories: string[] = [];
+      $('a[href*="?cat="]').each((_, el) => {
+        const catName = $(el).text().trim();
+        if (catName && !categories.includes(catName)) {
+          categories.push(catName);
+        }
+      });
+
+      let finalCoverUrl = story.coverUrl;
+      let sourceCoverUrl = coverUrlRaw || story.coverUrl;
+      const isAlreadyOnR2 =
+        story.coverUrl && !story.coverUrl.includes("tiemtruyenchu");
+
+      if (sourceCoverUrl) {
+        if (sourceCoverUrl.startsWith("//"))
+          sourceCoverUrl = "https:" + sourceCoverUrl;
+        else if (!sourceCoverUrl.startsWith("http"))
+          sourceCoverUrl = `${BASE_URL}${sourceCoverUrl.startsWith("/") ? "" : "/"}${sourceCoverUrl}`;
+      }
+
+      if (sourceCoverUrl && (!isAlreadyOnR2 || !finalCoverUrl)) {
+        const imageData = await fetchImageBuffer(sourceCoverUrl);
+        if (imageData) {
+          let ext =
+            sourceCoverUrl
+              .split(".")
+              .pop()
+              ?.split("?")[0]
+              .replace(/[^a-zA-Z0-9]/g, "")
+              .slice(0, 4) || "jpg";
+          const r2Key = `covers/${story.slug}-cover.${ext}`;
+
+          const uploadedUrl = await uploadCoverImage(
+            r2Key,
+            imageData.buffer,
+            imageData.contentType,
+          );
+          if (uploadedUrl) finalCoverUrl = uploadedUrl;
+        } else {
+          finalCoverUrl = sourceCoverUrl;
+        }
+      }
+
       await prisma.story.update({
         where: { id: story.id },
         data: {
-          coverUrl: detail.coverUrl,
-          description: detail.description,
-          views: detail.views,
-          remoteChapterCount: detail.chapterCount || undefined,
+          coverUrl: finalCoverUrl,
+          description,
+          views,
+          remoteChapterCount: chapterCount || undefined,
         },
       });
 
-      // Cập nhật thêm categories
-      for (const catName of detail.categories) {
-        const normalizedCatName = nfc(catName);
-        const catSlug = createSlug(normalizedCatName);
-        let cat = await prisma.category.findUnique({
-          where: { slug: catSlug },
-        });
-        if (!cat) {
-          cat = await prisma.category.create({
-            data: { name: normalizedCatName, slug: catSlug },
-          });
-        }
-        const exists = await prisma.storyCategory.findUnique({
-          where: {
-            storyId_categoryId: { storyId: story.id, categoryId: cat.id },
-          },
-        });
-        if (!exists) {
-          await prisma.storyCategory.create({
-            data: { storyId: story.id, categoryId: cat.id },
-          });
+      // FIX LỖI DB: DÙNG UPSERT THAY VÌ FIND & CREATE ĐỂ TRÁNH XUNG ĐỘT LUỒNG SONG SONG
+      if (categories.length > 0) {
+        for (const catName of categories) {
+          const rawCatName = nfc(catName);
+          const catSlug = createSlug(rawCatName);
+
+          try {
+            const cat = await prisma.category.upsert({
+              where: { slug: catSlug },
+              update: {}, // Nếu có rồi thì không làm gì
+              create: { name: rawCatName, slug: catSlug }, // Chưa có thì tạo
+            });
+
+            await prisma.storyCategory.upsert({
+              where: {
+                storyId_categoryId: { storyId: story.id, categoryId: cat.id },
+              },
+              update: {},
+              create: { storyId: story.id, categoryId: cat.id },
+            });
+          } catch (dbErr) {
+            // Bỏ qua lỗi khóa DB nhẹ nếu xảy ra trùng lặp cực đỉnh
+            console.log(
+              `    ⚠️ Bỏ qua lỗi tạo thể loại "${catName}" (luồng khác đã lo)`,
+            );
+          }
         }
       }
 
-      console.log(
-        `  ✅ Cập nhật: cover=${detail.coverUrl ? "có" : "không"}, desc=${detail.description ? detail.description.length + " ký tự" : "không"}, views=${detail.views}, cats=[${detail.categories.join(", ")}]`,
-      );
-
-      await randomDelay();
+      successCount++;
     } catch (err) {
-      console.error(`  ❌ Lỗi khi cào "${story.title}":`, err);
+      errorCount++;
+      // In ra TOÀN BỘ LỖI để dễ debug
+      console.error(`  ❌ Lỗi ở truyện "${story.title}":`, err);
+    }
+  };
+
+  for (const story of tasks) {
+    const promise = processStory(story).then(() => {
+      executing.delete(promise);
+    });
+
+    executing.add(promise);
+
+    if (executing.size >= concurrency) {
+      await Promise.race(executing);
+    }
+
+    processedCount++;
+    if (processedCount % 5 === 0) {
+      console.log(
+        `🔄 Tiến trình Phase 2: ${processedCount}/${tasks.length} truyện | ✅ ${successCount} | ❌ ${errorCount}`,
+      );
     }
   }
 
-  console.log(`\n🎉 Phase 2 hoàn thành.`);
-}
-
-// Parse HTML trang chi tiết truyện
-async function scrapeStoryDetailPage(
-  sourceId: number,
-): Promise<StoryDetail | null> {
-  const url = `${BASE_URL}/truyen/${sourceId}`;
-  const res = await fetchWithRetry(url);
-  const html = await res.text();
-  const $ = cheerio.load(html);
-
-  // Cover image
-  const coverUrl = $("img.story-poster").attr("src") || null;
-
-  // Title — h2 > span.align-middle
-  // (không cần vì đã có từ Phase 1)
-
-  // Description — .content-text
-  const descEl = $(".content-text");
-  const description = descEl.length > 0 ? nfc(descEl.text().trim()) : null;
-
-  // Categories — a.tag-pill.tag-active
-  const categories: string[] = [];
-  $("a.tag-pill.tag-active").each((_, el) => {
-    const catName = nfc($(el).text().trim());
-    if (catName) categories.push(catName);
-  });
-
-  // Views — .stat-item:first .stat-val
-  const viewsText = $(".stat-item").first().find(".stat-val").text().trim();
-  const views = parseInt(viewsText.replace(/[,.\s]/g, "")) || 0;
-
-  // Chapter count — tab button text "Danh sách chương (N)"
-  let chapterCount = 0;
-  $("button.nav-link").each((_, el) => {
-    const text = $(el).text();
-    const match = text.match(/Danh sách chương\s*\((\d+)\)/);
-    if (match) {
-      chapterCount = parseInt(match[1]);
-    }
-  });
-
-  return { coverUrl, description, categories, views, chapterCount };
+  await Promise.all(executing);
+  console.log(
+    `\n🎉 Phase 2 hoàn thành: ✅ ${successCount} thành công | ❌ ${errorCount} lỗi!`,
+  );
 }
 
 // ============================================================================
 // 📄 PHASE 3: CÀO NỘI DUNG CHƯƠNG — BĂNG CHUYỀN (WORKER POOL)
 // ============================================================================
-
-// Kiểu dữ liệu cho mỗi task trong hàng đợi
 type ScrapeTask = {
   storyId: number;
   sourceId: number;
@@ -474,12 +710,13 @@ async function phase3_crawlChapters(
   maxChapters?: number,
   concurrency: number = DEFAULT_CONCURRENCY,
 ) {
-  console.log("\n" + "=".repeat(60));
-  console.log("📄 PHASE 3: Cào nội dung chương (Băng Chuyền)");
-  console.log(`🔀 Workers: ${concurrency} luồng song song liên tục`);
-  console.log("=".repeat(60));
+  console.log(
+    "\n" +
+      "=".repeat(60) +
+      `\n📄 PHASE 3: Cào nội dung chương (🔀 ${concurrency} Tabs song song)\n` +
+      "=".repeat(60),
+  );
 
-  // 1. Lấy truyện cần crawl chương
   const stories = await prisma.story.findMany({
     where: storyId
       ? { id: storyId }
@@ -488,19 +725,11 @@ async function phase3_crawlChapters(
     orderBy: { id: "asc" },
   });
 
-  if (stories.length === 0) {
-    console.log("Không tìm thấy truyện nào cần cào chương.");
-    return;
-  }
-
-  // 2. GOM HÀNG ĐỢI KHỔNG LỒ — trộn lẫn chương từ nhiều truyện
   const allTasks: ScrapeTask[] = [];
 
   for (const story of stories) {
     if (!story.sourceId) continue;
     const limit = maxChapters || story.remoteChapterCount || 9999;
-
-    // Tìm chương đã crawl cuối cùng trong DB để resume
     const lastChapter = await prisma.chapter.findFirst({
       where: { storyId: story.id },
       orderBy: { chapterNum: "desc" },
@@ -508,17 +737,11 @@ async function phase3_crawlChapters(
     });
     const startChap = lastChapter ? Math.floor(lastChapter.chapterNum) + 1 : 1;
 
-    if (startChap > limit) {
-      console.log(
-        `⏭️  "${story.title}" — đã đủ ${lastChapter?.chapterNum} chương, bỏ qua.`,
-      );
-      continue;
-    }
+    if (startChap > limit) continue;
 
     console.log(
-      `📄 "${story.title}" (source: ${story.sourceId}) — thêm chương ${startChap} → ${limit} vào hàng đợi`,
+      `📄 "${story.title}" — thêm chương ${startChap} → ${limit} vào hàng đợi`,
     );
-
     for (let i = startChap; i <= limit; i++) {
       allTasks.push({
         storyId: story.id,
@@ -529,233 +752,217 @@ async function phase3_crawlChapters(
     }
   }
 
-  if (allTasks.length === 0) {
-    console.log("\n✅ Tất cả truyện đã crawl đủ chương. Không có gì để làm.");
-    return;
-  }
+  if (allTasks.length === 0)
+    return console.log("\n✅ Tất cả truyện đã crawl đủ chương.");
 
-  console.log(
-    `\n📋 Tổng cộng ${allTasks.length} chương từ ${stories.length} truyện. Khởi động băng chuyền...`,
-  );
-
-  // 3. THIẾT LẬP BĂNG CHUYỀN (WORKER POOL)
   let successCount = 0;
   let errorCount = 0;
-  let consecutiveErrors = 0;
   let processedCount = 0;
   let shouldAbort = false;
-  const MAX_CONSECUTIVE_ERRORS = 15;
   const executing = new Set<Promise<void>>();
 
-  // Hàm xử lý 1 task trọn vẹn: Cào HTML → Parse → Lưu DB
   const processTask = async (task: ScrapeTask): Promise<void> => {
     if (shouldAbort) return;
-
     try {
-      const chapterData = await scrapeChapterPage(
-        task.sourceId,
-        task.chapterNum,
+      const url = `${BASE_URL}/doc-truyen/${task.sourceId}/chuong/${task.chapterNum}`;
+      const html = await fetchHtmlWithPuppeteer(url, 2, "div.chapter-content");
+      const $ = cheerio.load(html);
+
+      const contentEl = $("div.chapter-content");
+      if (contentEl.length === 0)
+        throw new Error("Không tìm thấy div.chapter-content");
+
+      const content = nfc(
+        contentEl
+          .html()
+          ?.replace(/<br\s*\/?>/gi, "\n")
+          .replace(/<[^>]+>/g, "")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .trim() || "",
       );
 
-      if (!chapterData) {
-        errorCount++;
-        consecutiveErrors++;
-        console.log(
-          `  ❌ [${task.storyTitle}] Chương ${task.chapterNum}: không parse được nội dung`,
-        );
+      const pageTitle = $("title").text();
+      let title = `Chương ${task.chapterNum}`;
+      const titleMatch = nfc(pageTitle).match(
+        /^Chương\s*\d+[:.]\s*(.+?)\s*-\s*/,
+      );
+      if (titleMatch) title = titleMatch[1].trim();
 
-        if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-          shouldAbort = true;
-          console.log(
-            `\n🛑 ${MAX_CONSECUTIVE_ERRORS} lỗi liên tiếp! Dừng băng chuyền để tránh bị chặn.`,
-          );
-        }
-        return;
-      }
-
-      // Reset lỗi liên tiếp khi thành công
-      consecutiveErrors = 0;
-
-      // Upsert: tạo nếu chưa có, bỏ qua nếu đã tồn tại
       const existing = await prisma.chapter.findUnique({
         where: {
           storyId_chapterNum: {
             storyId: task.storyId,
-            chapterNum: chapterData.chapterNum,
+            chapterNum: task.chapterNum,
           },
         },
       });
 
       if (!existing) {
+        const slugifiedTitle = createSlug(task.storyTitle);
+        const r2Key = `stories/${slugifiedTitle}/chapters/${task.chapterNum}.html`;
+
+        const uploadSuccess = await uploadChapterContent(r2Key, content);
         await prisma.chapter.create({
           data: {
             storyId: task.storyId,
-            chapterNum: chapterData.chapterNum,
-            title: chapterData.title,
-            content: chapterData.content,
+            chapterNum: task.chapterNum,
+            title,
+            cloudflarer2Key: uploadSuccess ? r2Key : null,
+            content: uploadSuccess ? null : content,
           },
         });
-
-        // Cập nhật chapterCount (số chương thực tế đã tải) cho Story
         await prisma.story.update({
           where: { id: task.storyId },
           data: { chapterCount: { increment: 1 } },
         });
-
         successCount++;
-        // Ẩn log thành công để đỡ rối terminal
-        // console.log(`  ✅ [${task.storyTitle}] Chương ${task.chapterNum} đã lưu`);
       } else {
         successCount++;
-        // Ẩn log skip để đỡ rối terminal
-        // console.log(`  ⏭️  [${task.storyTitle}] Chương ${task.chapterNum} đã tồn tại`);
       }
     } catch (err) {
       errorCount++;
-      consecutiveErrors++;
       console.error(
         `  ❌ [${task.storyTitle}] Chương ${task.chapterNum}:`,
-        err instanceof Error ? err.message : err,
+        (err as Error).message,
       );
-
-      if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
-        shouldAbort = true;
-        console.log(
-          `\n🛑 ${MAX_CONSECUTIVE_ERRORS} lỗi liên tiếp! Dừng băng chuyền để tránh bị chặn.`,
-        );
-      }
     }
   };
 
-  // 4. CHẠY BĂNG CHUYỀN — luôn giữ đúng N worker chạy đồng thời
   for (const task of allTasks) {
     if (shouldAbort) break;
-
-    // Tạo promise cho task hiện tại
     const promise = processTask(task).then(() => {
-      // Tự xóa khỏi pool khi hoàn tất
       executing.delete(promise);
     });
     executing.add(promise);
 
-    // Khi băng chuyền đầy → đợi worker nhanh nhất xong rồi thả task tiếp
-    if (executing.size >= concurrency) {
-      await Promise.race(executing);
-      // Micro-delay (100-300ms) giữa các task để không dồn dập quá
-      await delay(Math.floor(Math.random() * 200) + 100);
-    }
+    if (executing.size >= concurrency) await Promise.race(executing);
 
-    // Log tiến trình mỗi 50 task
     processedCount++;
-    if (processedCount % 50 === 0) {
+    if (processedCount % 10 === 0) {
       console.log(
-        `\n🔄 Tiến trình: ${processedCount}/${allTasks.length} đã đẩy lên băng chuyền | ✅ ${successCount} | ❌ ${errorCount}\n`,
+        `\n🔄 Tiến trình: ${processedCount}/${allTasks.length} | ✅ ${successCount} | ❌ ${errorCount}\n`,
       );
     }
   }
 
-  // Chờ những worker cuối cùng trên băng chuyền hoàn tất
   await Promise.all(executing);
-
   console.log(
     `\n🎉 Phase 3 hoàn thành: ✅ ${successCount} thành công | ❌ ${errorCount} lỗi / ${allTasks.length} tổng chương!`,
   );
 }
 
-// Parse HTML trang đọc chương
-async function scrapeChapterPage(
-  sourceId: number,
-  chapNum: number,
-): Promise<ChapterData | null> {
-  const url = `${BASE_URL}/doc-truyen/${sourceId}/chuong/${chapNum}`;
+// ============================================================================
+// 🔍 KIỂM TRA DUNG LƯỢNG TRƯỚC KHI CRAWL
+// ============================================================================
+async function checkStorageLimits() {
+  console.log(
+    "\n" +
+      "=".repeat(60) +
+      "\n🔍 KIỂM TRA DUNG LƯỢNG LƯU TRỮ (DB & R2)\n" +
+      "=".repeat(60),
+  );
 
+  const maxDbSizeMB = process.env.MAX_DB_SIZE_MB
+    ? parseFloat(process.env.MAX_DB_SIZE_MB)
+    : 450;
+  const maxR2Files = process.env.MAX_R2_FILES
+    ? parseInt(process.env.MAX_R2_FILES)
+    : 100000;
+
+  // 1. Kiểm tra Postgres DB Size
   try {
-    const res = await fetchWithRetry(url);
-    const html = await res.text();
-    const $ = cheerio.load(html);
+    const dbSizeResult: any = await prisma.$queryRaw`
+      SELECT pg_database_size(current_database()) as size_bytes
+    `;
+    if (dbSizeResult && dbSizeResult.length > 0) {
+      const sizeBytes = Number(dbSizeResult[0].size_bytes);
+      const sizeMB = sizeBytes / (1024 * 1024);
+      console.log(
+        `🗄️  Dung lượng DB hiện tại: ${sizeMB.toFixed(2)} MB / ${maxDbSizeMB} MB`,
+      );
+      if (sizeMB > maxDbSizeMB) {
+        console.error(
+          `🚨 CẢNH BÁO: Dung lượng DB (${sizeMB.toFixed(2)} MB) vượt ngưỡng cho phép (${maxDbSizeMB} MB). DỪNG CRAWLER!`,
+        );
+        process.exit(1);
+      }
+    }
+  } catch (error) {
+    console.error("⚠️ Lỗi khi kiểm tra DB:", (error as Error).message);
+  }
 
-    // Nội dung chương — div.chapter-content
-    const contentEl = $("div.chapter-content");
-    if (contentEl.length === 0) return null;
+  // 2. Kiểm tra R2 Usage (Estimate qua count)
+  try {
+    const chaptersCount = await prisma.chapter.count({
+      where: { cloudflarer2Key: { not: null } },
+    });
+    const coversCount = await prisma.story.count({
+      where: { coverUrl: { not: null } },
+    });
 
-    // Lấy text thuần (giữ xuống dòng), loại bỏ HTML tags
-    const content = nfc(
-      contentEl
-        .html()
-        ?.replace(/<br\s*\/?>/gi, "\n") // Đổi <br> thành \n
-        .replace(/<[^>]+>/g, "") // Xóa HTML tags còn lại
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&quot;/g, '"')
-        .trim() || "",
+    const estimatedFiles = chaptersCount + coversCount;
+    console.log(
+      `☁️  Ước lượng file trên R2: ~${estimatedFiles} files / ${maxR2Files} files`,
     );
 
-    // Parse title từ <title> tag: "Chương X: Title - StoryName"
-    const pageTitle = $("title").text();
-    let title = "";
-    const titleMatch = nfc(pageTitle).match(/^Chương\s*\d+[:.]\s*(.+?)\s*-\s*/);
-    if (titleMatch) {
-      title = titleMatch[1].trim();
+    if (estimatedFiles > maxR2Files) {
+      console.error(
+        `🚨 CẢNH BÁO: R2 vượt phần Free Tier (~${estimatedFiles} >= ${maxR2Files}). DỪNG CRAWLER!`,
+      );
+      process.exit(1);
     }
-
-    return {
-      chapterNum: chapNum,
-      title: title || `Chương ${chapNum}`,
-      content,
-    };
-  } catch (err) {
-    return null;
+  } catch (error) {
+    console.error("⚠️ Lỗi ước lượng R2:", (error as Error).message);
   }
+
+  console.log("✅ Hệ thống lưu trữ an toàn. Có thể tiếp tục.\n");
 }
 
 // ============================================================================
-// 🚀 MAIN: ĐIỀU PHỐI CÁC PHASES
+// 🚀 MAIN
 // ============================================================================
 async function main() {
-  // Parse tham số dòng lệnh
   const args = process.argv.slice(2);
   const phaseArg = args.find((a) => a.startsWith("--phase="));
   const storyArg = args.find((a) => a.startsWith("--story="));
   const limitArg = args.find((a) => a.startsWith("--limit="));
   const concurrencyArg = args.find((a) => a.startsWith("--concurrency="));
+  const categoryArg = args.find((a) => a.startsWith("--category="));
 
-  const phase = phaseArg ? parseInt(phaseArg.split("=")[1]) : 0; // 0 = all
+  const phase = phaseArg ? parseInt(phaseArg.split("=")[1]) : 0;
   const storyId = storyArg ? parseInt(storyArg.split("=")[1]) : undefined;
   const maxChapters = limitArg ? parseInt(limitArg.split("=")[1]) : undefined;
   const concurrency = concurrencyArg
     ? parseInt(concurrencyArg.split("=")[1])
     : DEFAULT_CONCURRENCY;
+  const categorySlug = categoryArg ? categoryArg.split("=")[1] : undefined;
 
-  console.log("🚀 TiemTruyenChu Crawler v2.0");
-  console.log(
-    `⚙️  Phase: ${phase || "ALL"} | Story: ${storyId || "ALL"} | Limit: ${maxChapters || "ALL"} | Concurrency: ${concurrency}`,
-  );
+  console.log("🚀 TiemTruyenChu Crawler v3.0 (Puppeteer Stealth Edition)");
 
   try {
+    await checkStorageLimits(); // Kiểm tra dung lượng lưu trữ trước
+    await loginTiemTruyenChu(); // Thực hiện đăng nhập đầu tiên
+
     if (phase === 0 || phase === 1) {
-      await phase1_crawlStoryList();
+      if (categorySlug) await phase1_crawlStoryListByCategory(categorySlug);
+      else await phase1_crawlStoryList();
     }
-
-    if (phase === 0 || phase === 2) {
-      await phase2_crawlStoryDetails(storyId);
-    }
-
-    if (phase === 0 || phase === 3) {
+    if (phase === 0 || phase === 2) await phase2_crawlStoryDetails(storyId);
+    if (phase === 0 || phase === 3)
       await phase3_crawlChapters(storyId, maxChapters, concurrency);
-    }
   } finally {
+    await closeBrowser(); // QUAN TRỌNG: Đóng trình duyệt ảo để giải phóng RAM
     await prisma.$disconnect();
-    console.log(
-      `\n📊 Thống kê: ${requestCount} requests | ${rateLimitHits} rate-limit hits`,
-    );
-    console.log("🔌 Đã đóng kết nối Database an toàn.");
+    console.log(`\n📊 Thống kê: ${requestCount} Tabs Puppeteer đã mở.`);
+    console.log("🔌 Đã đóng kết nối an toàn.");
   }
 }
 
-// Kích hoạt
-main().catch((e) => {
+main().catch(async (e) => {
   console.error("💀 Lỗi hệ thống nghiêm trọng:", e);
+  await closeBrowser();
   process.exit(1);
 });

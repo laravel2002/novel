@@ -1,27 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
-import { searchStories } from "@/features/story/services/story";
+import { apiHandler, createOptionsHandler, parsePageParams, buildPagination } from "@/lib/api-handler";
+import { SearchService } from "@/features/search/services/search.service";
 
-export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get("q");
+export const OPTIONS = createOptionsHandler();
 
-  if (!query) {
-    return NextResponse.json(
-      { error: "Query parameter is required" },
-      { status: 400 },
-    );
+export const GET = apiHandler(async (req, ctx) => {
+  const { searchParams } = new URL(req.url);
+  const query = searchParams.get("q") || "";
+  const { page, limit } = parsePageParams(searchParams);
+
+  if (!query.trim()) {
+    return ctx.paginated([], buildPagination(page, limit, 0));
   }
 
-  try {
-    const page = Number(searchParams.get("page")) || 1;
-    const limit = Number(searchParams.get("limit")) || 20;
-    const result = await searchStories(query, page, limit);
-    return NextResponse.json(result);
-  } catch (error) {
-    console.error("Search API error:", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
-  }
-}
+  const result = await SearchService.search({
+    query,
+    page,
+    limit,
+  });
+
+  return ctx.paginated(
+    result.stories,
+    buildPagination(page, limit, result.total)
+  );
+});

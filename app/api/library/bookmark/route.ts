@@ -1,30 +1,26 @@
-import { NextResponse } from "next/server";
-import { auth } from "@/auth";
-import { toggleBookmark } from "@/services/library";
+import { apiHandler, createOptionsHandler } from "@/lib/api-handler";
+import { getApiAuthUser } from "@/lib/api-auth";
+import { LibraryService } from "@/features/library/services/library.service";
 
-export async function POST(req: Request) {
-  try {
-    const session = await auth();
+export const OPTIONS = createOptionsHandler();
 
-    if (!session || !session.user || !session.user.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const body = await req.json();
-    const { storyId } = body;
-
-    if (!storyId || typeof storyId !== "number") {
-      return NextResponse.json({ error: "Invalid storyId" }, { status: 400 });
-    }
-
-    const result = await toggleBookmark(session.user.id, storyId);
-
-    return NextResponse.json(result);
-  } catch (error: unknown) {
-    console.error("[TOGGLE_BOOKMARK_ERROR]", error);
-    return NextResponse.json(
-      { error: "Internal Server Error" },
-      { status: 500 },
-    );
+export const POST = apiHandler(async (req, ctx) => {
+  const user = await getApiAuthUser(req);
+  if (!user) {
+    return ctx.error("Vui lòng đăng nhập để lưu truyện", 401);
   }
-}
+
+  const body = await req.json();
+  const { storyId } = body;
+
+  if (!storyId || typeof storyId !== "number") {
+    return ctx.error("Thiếu hoặc sai định dạng storyId", 400);
+  }
+
+  const result = await LibraryService.toggleBookmark(user.id as string, storyId);
+
+  return ctx.success(
+    result,
+    200
+  );
+});

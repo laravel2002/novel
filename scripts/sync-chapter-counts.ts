@@ -1,4 +1,4 @@
-import { prisma } from "../lib/prisma";
+import { prisma } from "../src/lib/prisma";
 
 async function syncChapterCounts() {
   console.log("🚀 Starting synchronization of chapterCount...");

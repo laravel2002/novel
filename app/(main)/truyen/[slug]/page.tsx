@@ -1,0 +1,151 @@
+import { notFound } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  getStoryBySlug,
+  getRelatedStories,
+  getTopStoriesByViews,
+  getInitialChapters,
+} from "@/features/story/services/story";
+import { Metadata } from "next";
+import {
+  IconEye,
+  IconStar,
+  IconUser,
+  IconList,
+  IconShare,
+  IconFlag,
+  IconThumbUp,
+  IconMessageCircle,
+  IconChevronLeft,
+  IconStarFilled,
+} from "@tabler/icons-react";
+import { cn, getImageUrl } from "@/lib/utils";
+import { ReadNowButton } from "@/features/story/components/shared/ReadNowButton";
+import ChapterList from "@/features/chapter/components/ChapterList";
+import { BookmarkButton } from "@/features/story/components/shared/BookmarkButton";
+import { RatingBox } from "@/features/story/components/shared/RatingBox";
+import { NominationBox } from "@/features/story/components/shared/NominationBox";
+import { checkIsBookmarked, getLibraryStatus } from "@/features/library/services/library";
+import {
+  getUserRating,
+  hasNominatedToday,
+  getNominationCount,
+  getRemainingNominations,
+} from "@/features/interaction/services/interaction";
+import { auth } from "@/lib/auth/auth";
+import { BackButton } from "@/components/shared/BackButton";
+import { StoryDetail } from "@/features/story/components/StoryDetail";
+
+export const revalidate = 3600; // Regenerate page every hour
+
+export async function generateStaticParams() {
+  const topStories = await getTopStoriesByViews(100);
+  return topStories.map((story) => ({
+    slug: story.slug,
+  }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const story = await getStoryBySlug(slug);
+
+  if (!story) {
+    return { title: "Không tìm thấy truyện | Novel" };
+  }
+
+  return {
+    title: `${story.title} - ${story.author} | Novel`,
+    description:
+      story.description?.substring(0, 160) ||
+      `Đọc truyện ${story.title} của tác giả ${story.author}.`,
+    openGraph: {
+      title: story.title,
+      description: story.description?.substring(0, 160) || "",
+      images: story.coverUrl ? [{ url: getImageUrl(story.coverUrl) }] : [],
+    },
+  };
+}
+
+export default async function StoryDetailPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}) {
+  const { slug } = await params;
+  const session = await auth();
+  const story = await getStoryBySlug(slug);
+
+  if (!story) {
+    notFound();
+  }
+
+  const categoryIds = story.categories.map((c) => c.id);
+  const relatedStoriesPromise = getRelatedStories(story.id, categoryIds, 6);
+  const initialChaptersPromise = getInitialChapters(story.id, 50);
+  const firstChapterNum = story.chapters[0]?.chapterNum;
+
+  // Kiểm tra trạng thái bookmark, rating, nomination của user
+  let initialLibraryStatus: string | null = null;
+  let userRatingScore: number | null = null;
+  let nominatedToday = false;
+  let remainingNominations = 0;
+  if (session?.user?.id) {
+    [initialLibraryStatus, userRatingScore, nominatedToday, remainingNominations] =
+      await Promise.all([
+        getLibraryStatus(session.user.id, story.id),
+        getUserRating(session.user.id, story.id),
+        hasNominatedToday(session.user.id, story.id),
+        getRemainingNominations(session.user.id),
+      ]);
+  }
+
+  // Lấy tổng lượt đề cử
+  const totalNominations = await getNominationCount(story.id);
+
+  // Mock data cho Top Hâm Mộ
+  const topFans = [
+    {
+      name: "Tư bản tu tiên",
+      score: 778,
+      avatar: "TB",
+      color: "bg-yellow-500",
+    },
+    { name: "Tom Riddle", score: 596, avatar: "TR", color: "bg-slate-400" },
+    { name: "mieuu mieuu", score: 555, avatar: "MM", color: "bg-orange-600" },
+    { name: "Tung Pham", score: 544, avatar: "TP", color: "bg-blue-500" },
+    {
+      name: "Hung Nguyen Dan...",
+      score: 525,
+      avatar: "HN",
+      color: "bg-green-500",
+    },
+  ];
+
+
+
+  return (
+    <StoryDetail
+      story={story}
+      slug={slug}
+      firstChapterNum={firstChapterNum}
+      initialLibraryStatus={initialLibraryStatus}
+      userRatingScore={userRatingScore}
+      nominatedToday={nominatedToday}
+      remainingNominations={remainingNominations}
+      totalNominations={totalNominations}
+      isLoggedIn={!!session?.user}
+      topFans={topFans}
+      relatedStoriesPromise={relatedStoriesPromise}
+      initialChaptersPromise={initialChaptersPromise}
+    />
+  );
+}
