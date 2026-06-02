@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { corsHeaders, handleOptions } from "@/lib/cors";
 import type { PaginationMeta } from "@/lib/api-response";
+import { ApiError } from "@/lib/api-error";
 
 // ============================================================
 // Types & Interfaces
@@ -10,6 +11,7 @@ import type { PaginationMeta } from "@/lib/api-response";
 export interface ResponseMetadata {
   timestamp: string;
   version: string;
+  duration?: number; // Tính bằng ms
 }
 
 /** Cấu trúc JSON chuẩn trả về cho MỌI API endpoint */
@@ -17,20 +19,25 @@ export interface StandardApiResponse<T = unknown> {
   success: boolean;
   data: T | null;
   error: string | null;
+  errorCode?: string; // Định danh lỗi cho App
+  errorDetails?: unknown; // Chi tiết lỗi validation (nếu có)
   metadata: ResponseMetadata;
   pagination?: PaginationMeta;
 }
 
 /** Context object được inject vào mỗi handler, cung cấp các method tiện ích */
 export interface ApiHandlerContext {
+  /** Bật bộ nhớ đệm Cache-Control cho response */
+  cache: (maxAge: number, sMaxAge?: number) => ApiHandlerContext;
+
   /** Trả về response thành công (HTTP 2xx) */
   success: <T>(data: T, status?: number) => NextResponse;
 
   /** Trả về response thành công kèm phân trang */
   paginated: <T>(data: T, pagination: PaginationMeta, status?: number) => NextResponse;
 
-  /** Trả về response lỗi với message và HTTP status code */
-  error: (message: string, status?: number) => NextResponse;
+  /** Trả về response lỗi (khuyến khích throw ApiError thay vì dùng method này) */
+  error: (message: string, status?: number, errorCode?: string, errorDetails?: unknown) => NextResponse;
 }
 
 /** Kiểu hàm handler mà developer viết bên trong apiHandler() */
@@ -140,25 +147,39 @@ export function createOptionsHandler() {
 export function apiHandler(handler: ApiRouteHandler, options: ApiHandlerOptions = {}) {
   const { version = "v1", cors = true } = options;
 
+  let cacheControlHeader: string | null = null;
+  let startTime = Date.now();
+
   // Hàm tạo metadata cho mỗi response
   const createMetadata = (): ResponseMetadata => ({
     timestamp: new Date().toISOString(),
     version,
+    duration: Date.now() - startTime,
   });
 
-  // Hàm gắn CORS headers vào response nếu bật
-  const applyCors = (response: NextResponse): NextResponse => {
+  // Hàm gắn Headers (CORS, Cache) vào response
+  const applyHeaders = (response: NextResponse): NextResponse => {
     if (cors) {
       const headers = corsHeaders();
       for (const [key, value] of Object.entries(headers)) {
         response.headers.set(key, String(value));
       }
     }
+    if (cacheControlHeader) {
+      response.headers.set("Cache-Control", cacheControlHeader);
+    }
     return response;
   };
 
   // Context object cung cấp cho handler
   const ctx: ApiHandlerContext = {
+    cache(maxAge: number, sMaxAge?: number) {
+      const directives = [`public`, `max-age=${maxAge}`];
+      if (sMaxAge) directives.push(`s-maxage=${sMaxAge}`);
+      cacheControlHeader = directives.join(', ');
+      return this;
+    },
+
     success<T>(data: T, status: number = 200) {
       const body: StandardApiResponse<T> = {
         success: true,
@@ -166,7 +187,7 @@ export function apiHandler(handler: ApiRouteHandler, options: ApiHandlerOptions 
         error: null,
         metadata: createMetadata(),
       };
-      return applyCors(NextResponse.json(body, { status }) as NextResponse);
+      return applyHeaders(NextResponse.json(body, { status }) as NextResponse);
     },
 
     paginated<T>(data: T, pagination: PaginationMeta, status: number = 200) {
@@ -177,17 +198,19 @@ export function apiHandler(handler: ApiRouteHandler, options: ApiHandlerOptions 
         metadata: createMetadata(),
         pagination,
       };
-      return applyCors(NextResponse.json(body, { status }) as NextResponse);
+      return applyHeaders(NextResponse.json(body, { status }) as NextResponse);
     },
 
-    error(message: string, status: number = 400) {
+    error(message: string, status: number = 400, errorCode?: string, errorDetails?: unknown) {
       const body: StandardApiResponse<null> = {
         success: false,
         data: null,
         error: message,
+        errorCode,
+        errorDetails,
         metadata: createMetadata(),
       };
-      return applyCors(NextResponse.json(body, { status }) as NextResponse);
+      return applyHeaders(NextResponse.json(body, { status }) as NextResponse);
     },
   };
 
@@ -195,10 +218,25 @@ export function apiHandler(handler: ApiRouteHandler, options: ApiHandlerOptions 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return async function wrappedHandler(req: NextRequest, routeContext?: any) {
     try {
+      startTime = Date.now();
       return await handler(req, ctx, routeContext);
     } catch (error: unknown) {
       // --- Global Error Handler ---
-      // Log chi tiết lỗi ở server, chỉ trả message an toàn cho client
+      
+      // 1. Xử lý ApiError có chủ đích
+      if (error instanceof ApiError) {
+        const body: StandardApiResponse<null> = {
+          success: false,
+          data: null,
+          error: error.message,
+          errorCode: error.errorCode,
+          errorDetails: error.details,
+          metadata: createMetadata(),
+        };
+        return applyHeaders(NextResponse.json(body, { status: error.statusCode }) as NextResponse);
+      }
+
+      // 2. Xử lý lỗi hệ thống (Internal Server Error)
       const errorMessage =
         error instanceof Error ? error.message : "Đã xảy ra lỗi không xác định";
 
@@ -214,9 +252,10 @@ export function apiHandler(handler: ApiRouteHandler, options: ApiHandlerOptions 
         success: false,
         data: null,
         error: clientMessage,
+        errorCode: "ERR_INTERNAL_SERVER_ERROR",
         metadata: createMetadata(),
       };
-      return applyCors(NextResponse.json(body, { status: 500 }) as NextResponse);
+      return applyHeaders(NextResponse.json(body, { status: 500 }) as NextResponse);
     }
   };
 }

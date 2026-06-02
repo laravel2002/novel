@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { registerSchema, type RegisterFormData } from "@/lib/validations/auth.schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,21 +16,34 @@ import {
 import { registerUser } from "@/app/actions/auth";
 import Link from "next/link";
 
+const FormMessage = ({ message }: { message?: string }) => {
+  if (!message) return null;
+  return <p className="text-[13px] font-medium text-destructive mt-1">{message}</p>;
+};
+
 export function RegisterPageMobile() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+  });
+
+  const onSubmit = async (data: RegisterFormData) => {
     setIsLoading(true);
     setErrorMsg("");
     setSuccessMsg("");
 
-    const formData = new FormData(e.currentTarget);
-    const email = (formData.get("email") as string).trim().toLowerCase();
-    const password = formData.get("password") as string;
+    const formData = new FormData();
+    formData.append("name", data.name);
+    formData.append("email", data.email);
+    formData.append("password", data.password);
 
     const registerRes = await registerUser(formData);
 
@@ -39,8 +55,8 @@ export function RegisterPageMobile() {
 
       const loginRes = await signIn("credentials", {
         redirect: false,
-        email,
-        password,
+        email: data.email,
+        password: data.password,
       });
 
       if (!loginRes?.error) {
@@ -86,7 +102,7 @@ export function RegisterPageMobile() {
           </p>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
           {errorMsg && (
             <div className="p-3 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-sm rounded-md border border-red-200">
               {errorMsg}
@@ -102,41 +118,40 @@ export function RegisterPageMobile() {
             <Label htmlFor="name">Tên hiển thị</Label>
             <Input
               id="name"
-              name="name"
               type="text"
               placeholder="Vương Lâm"
-              required
               disabled={isLoading}
               className="h-12 bg-muted/40 rounded-xl"
+              {...register("name")}
             />
+            <FormMessage message={errors.name?.message} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
-              name="email"
               type="email"
               placeholder="laptrinhvien@example.com"
-              required
               disabled={isLoading}
               className="h-12 bg-muted/40 rounded-xl"
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
+              {...register("email")}
             />
+            <FormMessage message={errors.email?.message} />
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">Mật khẩu</Label>
             <Input
               id="password"
-              name="password"
               type="password"
               placeholder="••••••••"
-              required
               disabled={isLoading}
-              minLength={6}
               className="h-12 bg-muted/40 rounded-xl"
+              {...register("password")}
             />
+            <FormMessage message={errors.password?.message} />
           </div>
 
           <Button

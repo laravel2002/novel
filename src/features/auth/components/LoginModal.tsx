@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  loginSchema,
+  registerSchema,
+  resetPasswordSchema,
+  type LoginFormData,
+  type RegisterFormData,
+  type ResetPasswordFormData,
+} from "@/lib/validations/auth.schema";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,76 +47,115 @@ export function LoginModal({ children }: { children: React.ReactNode }) {
     setSuccessMsg("");
   };
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const {
+    register: registerLogin,
+    handleSubmit: handleLoginSubmit,
+    formState: { errors: loginErrors },
+    reset: resetLogin,
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const {
+    register: registerSignup,
+    handleSubmit: handleSignupSubmit,
+    formState: { errors: signupErrors },
+    reset: resetSignup,
+  } = useForm<RegisterFormData>({
+    resolver: zodResolver(registerSchema),
+  });
+
+  const {
+    register: registerReset,
+    handleSubmit: handleResetSubmit,
+    formState: { errors: resetErrors },
+    reset: resetResetPassword,
+  } = useForm<ResetPasswordFormData>({
+    resolver: zodResolver(resetPasswordSchema),
+  });
+
+  const onLoginSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     clearMessages();
 
-    const formData = new FormData(e.currentTarget);
-    const email = (formData.get("email") as string).trim().toLowerCase();
-    const password = formData.get("password") as string;
+    const res = await signIn("credentials", {
+      redirect: false,
+      email: data.email,
+      password: data.password,
+    });
 
-    if (isForgotPasswordView) {
-      const res = await forgotPassword(email);
-      if (res.error) {
-        setErrorMsg(res.error);
-      } else {
-        setSuccessMsg(res.message || "Vui lòng kiểm tra email của bạn.");
-      }
+    if (res?.error) {
+      setErrorMsg("Email hoặc mật khẩu không chính xác.");
       setIsLoading(false);
-      return;
-    }
-
-    if (isLoginView) {
-      // Logic Đăng Nhập
-      const res = await signIn("credentials", {
-        redirect: false,
-        email,
-        password,
-      });
-
-      if (res?.error) {
-        setErrorMsg("Email hoặc mật khẩu không chính xác.");
-        setIsLoading(false);
-      } else {
-        setIsOpen(false);
-        setIsLoading(false);
-      }
     } else {
-      // Logic Đăng Ký
-      const registerRes = await registerUser(formData);
-      if (registerRes.error) {
-        setErrorMsg(registerRes.error);
-        setIsLoading(false);
-      } else {
-        setSuccessMsg("Đăng ký thành công! Đang tự động đăng nhập...");
-        // Sau khi đăng ký thành công, tự động đăng nhập luôn
-        const loginRes = await signIn("credentials", {
-          redirect: false,
-          email,
-          password,
-        });
-        if (!loginRes?.error) {
-          setTimeout(() => {
-            setIsOpen(false);
-            setIsLoading(false);
-            setIsLoginView(true); // Reset state cho lần mở sau
-            clearMessages();
-          }, 1000);
-        } else {
-          setErrorMsg(
-            "Không thể tự đăng nhập sau khi đăng ký, vui lòng thử lại.",
-          );
+      setIsOpen(false);
+      setIsLoading(false);
+    }
+  };
+
+  const onSignupSubmit = async (data: RegisterFormData) => {
+    setIsLoading(true);
+    clearMessages();
+
+    // Dùng formData vì server action mong đợi FormData
+    const formData = new FormData();
+    formData.append("name", data.name);
+    formData.append("email", data.email);
+    formData.append("password", data.password);
+
+    const registerRes = await registerUser(formData);
+    if (registerRes.error) {
+      setErrorMsg(registerRes.error);
+      setIsLoading(false);
+    } else {
+      setSuccessMsg("Đăng ký thành công! Đang tự động đăng nhập...");
+      const loginRes = await signIn("credentials", {
+        redirect: false,
+        email: data.email,
+        password: data.password,
+      });
+      if (!loginRes?.error) {
+        setTimeout(() => {
+          setIsOpen(false);
           setIsLoading(false);
-        }
+          setIsLoginView(true);
+          clearMessages();
+        }, 1000);
+      } else {
+        setErrorMsg("Không thể tự đăng nhập sau khi đăng ký, vui lòng thử lại.");
+        setIsLoading(false);
       }
     }
   };
 
+  const onResetSubmit = async (data: ResetPasswordFormData) => {
+    setIsLoading(true);
+    clearMessages();
+
+    const res = await forgotPassword(data.email);
+    if (res.error) {
+      setErrorMsg(res.error);
+    } else {
+      setSuccessMsg(res.message || "Vui lòng kiểm tra email của bạn.");
+    }
+    setIsLoading(false);
+  };
+
   const loginWithProvider = async (provider: "google") => {
     if (provider === "google") setIsGoogleLoading(true);
-
     await signIn(provider, { callbackUrl: "/" });
+  };
+
+  const resetAllForms = () => {
+    resetLogin();
+    resetSignup();
+    resetResetPassword();
+    clearMessages();
+  };
+
+  const FormMessage = ({ message }: { message?: string }) => {
+    if (!message) return null;
+    return <p className="text-[13px] font-medium text-destructive mt-1">{message}</p>;
   };
 
   return (
@@ -114,12 +164,11 @@ export function LoginModal({ children }: { children: React.ReactNode }) {
       onOpenChange={(open) => {
         setIsOpen(open);
         if (!open) {
-          // Reset về form đăng nhập khi đóng modal
           setTimeout(() => {
             setIsLoginView(true);
             setIsForgotPasswordView(false);
           }, 300);
-          clearMessages();
+          resetAllForms();
         }
       }}
     >
@@ -186,91 +235,125 @@ export function LoginModal({ children }: { children: React.ReactNode }) {
             </>
           )}
 
-          <form onSubmit={onSubmit} className="space-y-4">
-            {errorMsg && (
-              <div className="p-3 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-sm rounded-md border border-red-200 dark:border-red-900/50">
-                {errorMsg}
-              </div>
-            )}
-            {successMsg && (
-              <div className="p-3 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-sm rounded-md border border-green-200 dark:border-green-900/50">
-                {successMsg}
-              </div>
-            )}
-
-            {!isLoginView && !isForgotPasswordView && (
-              <div className="space-y-2">
-                <Label htmlFor="name">Tên hiển thị</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  type="text"
-                  placeholder="Vương Lâm"
-                  required={!isLoginView && !isForgotPasswordView}
-                  disabled={isLoading}
-                />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                placeholder="laptrinhvien@example.com"
-                required
-                disabled={isLoading}
-                autoCapitalize="none"
-                autoComplete="email"
-                autoCorrect="off"
-              />
+          {errorMsg && (
+            <div className="p-3 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-sm rounded-md border border-red-200 dark:border-red-900/50">
+              {errorMsg}
             </div>
-            {!isForgotPasswordView && (
+          )}
+          {successMsg && (
+            <div className="p-3 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-sm rounded-md border border-green-200 dark:border-green-900/50">
+              {successMsg}
+            </div>
+          )}
+
+          {/* Form Khôi phục mật khẩu */}
+          {isForgotPasswordView && (
+            <form onSubmit={handleResetSubmit(onResetSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="laptrinhvien@example.com"
+                  disabled={isLoading}
+                  {...registerReset("email")}
+                />
+                <FormMessage message={resetErrors.email?.message} />
+              </div>
+              <Button type="submit" className="w-full h-11 font-bold" disabled={isLoading}>
+                {isLoading && <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Gửi link khôi phục
+              </Button>
+            </form>
+          )}
+
+          {/* Form Đăng nhập */}
+          {!isForgotPasswordView && isLoginView && (
+            <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="login-email">Email</Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  placeholder="laptrinhvien@example.com"
+                  disabled={isLoading}
+                  {...registerLogin("email")}
+                />
+                <FormMessage message={loginErrors.email?.message} />
+              </div>
               <div className="space-y-2">
                 <div className="flex justify-between items-center">
-                  <Label htmlFor="password">Mật khẩu</Label>
-                  {isLoginView && (
-                    <a
-                      href="#"
-                      className="text-xs text-primary hover:underline"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        setIsForgotPasswordView(true);
-                        clearMessages();
-                      }}
-                    >
-                      Quên mật khẩu?
-                    </a>
-                  )}
+                  <Label htmlFor="login-password">Mật khẩu</Label>
+                  <a
+                    href="#"
+                    className="text-xs text-primary hover:underline"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setIsForgotPasswordView(true);
+                      clearMessages();
+                    }}
+                  >
+                    Quên mật khẩu?
+                  </a>
                 </div>
                 <Input
-                  id="password"
-                  name="password"
+                  id="login-password"
                   type="password"
                   placeholder="••••••••"
-                  required={!isForgotPasswordView}
                   disabled={isLoading}
-                  minLength={6}
+                  {...registerLogin("password")}
                 />
+                <FormMessage message={loginErrors.password?.message} />
               </div>
-            )}
+              <Button type="submit" className="w-full h-11 font-bold" disabled={isLoading}>
+                {isLoading && <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Đăng nhập
+              </Button>
+            </form>
+          )}
 
-            <Button
-              type="submit"
-              className="w-full h-11 font-bold"
-              disabled={isLoading}
-            >
-              {isLoading && (
-                <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              {isForgotPasswordView
-                ? "Gửi link khôi phục"
-                : isLoginView
-                  ? "Đăng nhập"
-                  : "Tạo tài khoản"}
-            </Button>
-          </form>
+          {/* Form Đăng ký */}
+          {!isForgotPasswordView && !isLoginView && (
+            <form onSubmit={handleSignupSubmit(onSignupSubmit)} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="signup-name">Tên hiển thị</Label>
+                <Input
+                  id="signup-name"
+                  type="text"
+                  placeholder="Vương Lâm"
+                  disabled={isLoading}
+                  {...registerSignup("name")}
+                />
+                <FormMessage message={signupErrors.name?.message} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-email">Email</Label>
+                <Input
+                  id="signup-email"
+                  type="email"
+                  placeholder="laptrinhvien@example.com"
+                  disabled={isLoading}
+                  {...registerSignup("email")}
+                />
+                <FormMessage message={signupErrors.email?.message} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="signup-password">Mật khẩu</Label>
+                <Input
+                  id="signup-password"
+                  type="password"
+                  placeholder="••••••••"
+                  disabled={isLoading}
+                  {...registerSignup("password")}
+                />
+                <FormMessage message={signupErrors.password?.message} />
+              </div>
+              <Button type="submit" className="w-full h-11 font-bold" disabled={isLoading}>
+                {isLoading && <IconLoader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Tạo tài khoản
+              </Button>
+            </form>
+          )}
 
           {!isForgotPasswordView && (
             <div className="text-center text-sm text-muted-foreground mt-2">

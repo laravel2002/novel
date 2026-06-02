@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { commentSchema, type CommentFormData } from "@/lib/validations/comment.schema";
+
+const FormMessage = ({ message }: { message?: string }) => {
+  if (!message) return null;
+  return <p className="text-[13px] font-medium text-destructive mt-1">{message}</p>;
+};
 
 export function CommentForm({
   onSubmit,
@@ -13,15 +20,22 @@ export function CommentForm({
   isLoggedIn: boolean;
   isLoading: boolean;
 }) {
-  const [content, setContent] = useState("");
-  const [isSpoiler, setIsSpoiler] = useState(false);
+  const {
+    register,
+    handleSubmit,
+    watch,
+    reset,
+    formState: { errors },
+  } = useForm<CommentFormData>({
+    resolver: zodResolver(commentSchema),
+    defaultValues: { content: "", isSpoiler: false },
+  });
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!content.trim()) return;
-    onSubmit(content, isSpoiler);
-    setContent("");
-    setIsSpoiler(false);
+  const content = watch("content", "");
+
+  const onFormSubmit = (data: CommentFormData) => {
+    onSubmit(data.content, data.isSpoiler ?? false);
+    reset();
   };
 
   return (
@@ -47,23 +61,24 @@ export function CommentForm({
           </Button>
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-3">
+        <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3">
           <Textarea
             placeholder="Nêu cảm nhận của bạn về chương truyện này..."
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
             className="min-h-[100px] bg-background border-border/50 resize-y focus-visible:ring-1 focus-visible:ring-primary/50 text-[15px]"
             maxLength={1000}
+            disabled={isLoading}
+            {...register("content")}
           />
+          <FormMessage message={errors.content?.message} />
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <label className="flex items-center gap-2 text-sm cursor-pointer group">
               <input
                 type="checkbox"
-                checked={isSpoiler}
-                onChange={(e) => setIsSpoiler(e.target.checked)}
                 className="w-4 h-4 rounded border-border text-primary focus:ring-primary/20 transition-colors"
                 style={{ accentColor: "currentColor" }}
+                disabled={isLoading}
+                {...register("isSpoiler")}
               />
               <span className="text-muted-foreground group-hover:text-foreground transition-colors user-select-none">
                 Cảnh báo tiết lộ nội dung (Spoiler)

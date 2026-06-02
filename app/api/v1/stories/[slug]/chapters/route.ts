@@ -4,6 +4,7 @@ import { ChapterService } from "@/features/chapter/services/chapter.service";
 export const OPTIONS = createOptionsHandler();
 
 export const GET = apiHandler(async (req, ctx, routeContext) => {
+  ctx.cache(60); // Cache 60s
   const { slug } = await (routeContext as { params: Promise<{ slug: string }> }).params;
   const { searchParams } = new URL(req.url);
   const { page, limit } = parsePageParams(searchParams, { limit: 100 });

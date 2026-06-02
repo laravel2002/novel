@@ -4,6 +4,7 @@ import { SearchService } from "@/features/search/services/search.service";
 export const OPTIONS = createOptionsHandler();
 
 export const GET = apiHandler(async (req, ctx) => {
+  ctx.cache(60); // Cache 60s
   const { searchParams } = new URL(req.url);
   const query = searchParams.get("q") || "";
   const { page, limit } = parsePageParams(searchParams);

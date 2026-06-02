@@ -2,31 +2,41 @@
 
 import { useState } from "react";
 import { signIn } from "next-auth/react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { loginSchema, type LoginFormData } from "@/lib/validations/auth.schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IconBrandGoogle, IconLoader2 } from "@tabler/icons-react";
 import Link from "next/link";
-import { forgotPassword } from "@/app/actions/auth";
+
+const FormMessage = ({ message }: { message?: string }) => {
+  if (!message) return null;
+  return <p className="text-[13px] font-medium text-destructive mt-1">{message}</p>;
+};
 
 export function LoginPageDesktop() {
   const [isLoading, setIsLoading] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+  });
+
+  const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true);
     setErrorMsg("");
 
-    const formData = new FormData(e.currentTarget);
-    const email = (formData.get("email") as string).trim().toLowerCase();
-    const password = formData.get("password") as string;
-
     const res = await signIn("credentials", {
       redirect: false,
-      email,
-      password,
+      email: data.email,
+      password: data.password,
     });
 
     if (res?.error) {
@@ -78,7 +88,7 @@ export function LoginPageDesktop() {
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {errorMsg && (
             <div className="p-3 bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 text-sm rounded-md border border-red-200">
               {errorMsg}
@@ -89,15 +99,15 @@ export function LoginPageDesktop() {
             <Label htmlFor="email">Email</Label>
             <Input
               id="email"
-              name="email"
               type="email"
               placeholder="laptrinhvien@example.com"
-              required
               disabled={isLoading}
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
+              {...register("email")}
             />
+            <FormMessage message={errors.email?.message} />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between items-center">
@@ -111,13 +121,12 @@ export function LoginPageDesktop() {
             </div>
             <Input
               id="password"
-              name="password"
               type="password"
               placeholder="••••••••"
-              required
               disabled={isLoading}
-              minLength={6}
+              {...register("password")}
             />
+            <FormMessage message={errors.password?.message} />
           </div>
 
           <Button

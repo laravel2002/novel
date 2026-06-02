@@ -4,6 +4,7 @@ import { CommentService } from "@/features/comment/services/comment.service";
 export const OPTIONS = createOptionsHandler();
 
 export const GET = apiHandler(async (req, ctx, routeContext) => {
+  ctx.cache(30); // Cache 30s
   const { chapterId } = await (routeContext as { params: Promise<{ chapterId: string }> }).params;
   const { searchParams } = new URL(req.url);
   const paragraphIdStr = searchParams.get("paragraphId") || searchParams.get("paragraph_id");

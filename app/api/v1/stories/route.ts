@@ -5,6 +5,7 @@ import { getApiAuthUser } from "@/lib/api-auth";
 export const OPTIONS = createOptionsHandler();
 
 export const GET = apiHandler(async (req, ctx) => {
+  ctx.cache(60); // Cache 60s
   const { searchParams } = new URL(req.url);
   const { page, limit } = parsePageParams(searchParams);
   const status = searchParams.get("status") as "ONGOING" | "COMPLETED" | "PAUSED" | null;
